@@ -1,5 +1,37 @@
 use clap::{command, Args, Parser, Subcommand};
+use convert_case::{Case, Casing};
 use serde::{Deserialize, Serialize};
+
+fn case_from_str(s: &str) -> Result<Case, String> {
+    match s {
+        "Alternating" => Ok(Case::Alternating),
+        "Camel" => Ok(Case::Camel),
+        "Cobol" => Ok(Case::Cobol),
+        "Flat" => Ok(Case::Flat),
+        "Kebab" => Ok(Case::Kebab),
+        "Lower" => Ok(Case::Lower),
+        "Pascal" => Ok(Case::Pascal),
+        "Snake" => Ok(Case::Snake),
+        "ScreamingSnake" | "UpperSnake" => Ok(Case::UpperSnake),
+        "Title" => Ok(Case::Title),
+        "Toggle" => Ok(Case::Toggle),
+        "Train" => Ok(Case::Train),
+        "Upper" => Ok(Case::Upper),
+        "UpperCamel" => Ok(Case::UpperCamel),
+        "UpperFlat" => Ok(Case::UpperFlat),
+        "UpperKebab" => Ok(Case::UpperKebab),
+        _ => Err(format!(
+            "Unsupported case: {}. Supported cases are: Alternating, Camel, Cobol, Flat, Kebab, \
+             Lower, Pascal, Snake, ScreamingSnake/UpperSnake, Title, Toggle, Train, Upper, \
+             UpperCamel, UpperFlat, UpperKebab",
+            s,
+        )),
+    }
+}
+
+pub fn convert_case_filter(input: &str, case: &str) -> String {
+    input.to_case(case_from_str(case).unwrap())
+}
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
@@ -163,7 +195,7 @@ fn main() {
 
 fn render_pytest(config: &Config) {
     let mut env = minijinja::Environment::new();
-
+    env.add_filter("convert_case", convert_case_filter);
     env.add_template("pytest", include_str!("../templates/pytest.py.jinja"))
         .unwrap();
 
@@ -208,6 +240,7 @@ fn render_markdown(config: &Config) {
     let mut env = minijinja::Environment::new();
     env.add_template("markdown", include_str!("../templates/markdown.jinja"))
         .unwrap();
+    env.add_filter("convert_case", convert_case_filter);
 
     let md_template = env.get_template("markdown").unwrap();
     let markdown = md_template

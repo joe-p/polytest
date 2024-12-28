@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4.5.23", features = ["derive"] }
+convert_case = "0.6.0"
 minijinja = "2.5.0"
 serde = { version = "1.0.216", features = ["derive"] }
 toml = "0.8.19"

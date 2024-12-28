@@ -2,24 +2,24 @@
 ## Test Suites
 
 {% for suite in suites -%}
-### {{ suite.name }}
+### {{ suite.name | convert_case('Title') }}
 
 | Name | Description |
 | --- | --- |
 {% for group in suite.groups -%}
-| [{{ group.name }}](#{{ group.name | replace(' ', '-') }}) | {{ group.desc }} |
+| [{{ group.name }}](#{{ group.name | convert_case('Kebab') }}) | {{ group.desc }} |
 {% endfor %}
 {% endfor -%}
 
 ## Test Groups
 
 {% for group in groups -%}
-### {{ group.name }}
+### {{ group.name | convert_case('Title') }}
 
 | Name | Description |
 | --- | --- |
 {% for test in group.tests -%}
-| [{{ test.name }}](#{{ test.name | replace(' ', '-') }}) | {{ test.desc }} |
+| [{{ test.name }}](#{{ test.name | convert_case('Kebab') }}) | {{ test.desc }} |
 {% endfor %}
 {% endfor -%}
 

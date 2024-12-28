@@ -3,8 +3,8 @@ import pytest
 {%- for group in suite.groups %}
 {%- for test in group.tests %}
 
-@pytest.mark.group_{{ group.name | replace(' ', '_') }}
-def test_{{ test.name | replace(' ', '_') }}():
+@pytest.mark.group_{{ group.name | convert_case('Snake') }}
+def test_{{ test.name | convert_case('Snake') }}():
     """{{ test.desc }}"""
     raise Exception("TEST NOT IMPLEMENTED")
 

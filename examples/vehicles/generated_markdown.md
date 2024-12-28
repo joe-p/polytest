@@ -1,7 +1,7 @@
 # Polytest Test Plan
 ## Test Suites
 
-### motorcycle
+### Motorcycle
 
 | Name | Description |
 | --- | --- |
@@ -9,7 +9,7 @@
 | [invalid vehicle](#invalid-vehicle) | Errors are thrown when the vehicle has extra parts, which should never happen |
 | [broken vehicle](#broken-vehicle) | When the vehicle has parts that need repair, the respective functions should detect the issue |
 
-### car
+### Car
 
 | Name | Description |
 | --- | --- |
@@ -19,21 +19,21 @@
 
 ## Test Groups
 
-### valid vehicle
+### Valid Vehicle
 
 | Name | Description |
 | --- | --- |
 | [check headlights](#check-headlights) | The function for checking headlights should return true if the vehicle has the correct number of headlights |
 | [check tires](#check-tires) | The function for checking tires should return true if the vehicle has the correct number of inflated tires |
 
-### invalid vehicle
+### Invalid Vehicle
 
 | Name | Description |
 | --- | --- |
 | [extra headlight throws error](#extra-headlight-throws-error) | Having an extra headlight is invalid and should throw an error |
 | [extra tire throws error](#extra-tire-throws-error) | Having an extra tire is invalid and should throw an error |
 
-### broken vehicle
+### Broken Vehicle
 
 | Name | Description |
 | --- | --- |
