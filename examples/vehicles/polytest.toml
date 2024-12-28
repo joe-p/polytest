@@ -1,4 +1,10 @@
-# Each table must contain a unique identifier. Tables may also have:
+[language.python]
+out_dir = "py"
+
+[language.markdown]
+out_dir = "."
+
+# Each suite, group, and test table must contain a unique identifier. These tables may also have:
 # - name: a human readable name that will be used in the generated tests (i.e. the test name in jest)
 # - desc: a description that will show up in the generated tests as a comment
 #

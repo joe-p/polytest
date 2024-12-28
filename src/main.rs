@@ -1,6 +1,8 @@
 use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 fn case_from_str(s: &str) -> Result<Case, String> {
     match s {
@@ -33,8 +35,27 @@ pub fn convert_case_filter(input: &str, case: &str) -> String {
     input.to_case(case_from_str(case).unwrap())
 }
 
+pub struct ConfigMeta {
+    root_dir: PathBuf,
+    config: Config,
+}
+
+impl ConfigMeta {
+    pub fn from_file(path: &str) -> Self {
+        let contents = std::fs::read_to_string(path).unwrap();
+        let config = toml::from_str(&contents).unwrap();
+        Self {
+            root_dir: PathBuf::from(path).parent().unwrap().to_path_buf(),
+            config,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
+    #[serde(rename = "language")]
+    pub languages: HashMap<String, LanguageConfig>,
+
     #[serde(rename = "suite")]
     pub suites: Vec<SuiteConfig>,
 
@@ -45,11 +66,9 @@ pub struct Config {
     pub tests: Vec<TestConfig>,
 }
 
-impl Config {
-    pub fn from_file(path: &str) -> Self {
-        let contents = std::fs::read_to_string(path).unwrap();
-        toml::from_str(&contents).unwrap()
-    }
+#[derive(Deserialize, Debug, Clone)]
+pub struct LanguageConfig {
+    pub out_dir: PathBuf,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -175,7 +194,8 @@ struct Generate {
 
 fn main() {
     let parsed = Cli::parse();
-    let config = Config::from_file("examples/vehicles/polytest.toml");
+    let config_meta = ConfigMeta::from_file("examples/vehicles/polytest.toml");
+
     match parsed.command {
         Commands::Generate(generate) => {
             let languages = generate
@@ -189,8 +209,8 @@ fn main() {
 
             for language in languages {
                 match language.as_str() {
-                    "python" => render_pytest(&config, &mut env),
-                    "markdown" => render_markdown(&config, &mut env),
+                    "python" => render_pytest(&config_meta, &mut env),
+                    "markdown" => render_markdown(&config_meta, &mut env),
                     _ => panic!("Unsupported language: {}", language),
                 }
             }
@@ -198,7 +218,11 @@ fn main() {
     }
 }
 
-fn render_pytest(config: &Config, env: &mut minijinja::Environment) {
+fn render_pytest(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
+    let config = &config_meta.config;
+    let language_config = config.languages.get("python").unwrap();
+    let out_dir = config_meta.root_dir.join(&language_config.out_dir);
+
     env.add_template("pytest", include_str!("../templates/pytest.py.jinja"))
         .unwrap();
 
@@ -217,15 +241,12 @@ fn render_pytest(config: &Config, env: &mut minijinja::Environment) {
             })
             .unwrap();
 
-        std::fs::write(
-            format!("examples/vehicles/py/test_{}.py", suite.name),
-            pytest,
-        )
-        .unwrap();
+        std::fs::write(out_dir.join(format!("test_{}.py", suite.name)), pytest).unwrap();
     }
 }
 
-fn render_markdown(config: &Config, env: &mut minijinja::Environment) {
+fn render_markdown(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
+    let config = &config_meta.config;
     let suite_values: Vec<Suite> = config
         .suites
         .iter()
