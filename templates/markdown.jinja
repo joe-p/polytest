@@ -1,13 +1,31 @@
 # Polytest Test Plan
 ## Test Suites
 
-{% for suite in config.suite %}
-### {{ suite.id }}
+{% for suite in suites -%}
+### {{ suite.name }}
 
 | Name | Description |
 | --- | --- |
-{% for group in suite.groups %}
-| [{{ group.id }}](#{{ group.id }}) | {{ group.desc }} |
+{% for group in suite.groups -%}
+| [{{ group.name }}](#{{ group.name | replace(' ', '-') }}) | {{ group.desc }} |
 {% endfor %}
+{% endfor -%}
 
+## Test Groups
+
+{% for group in groups -%}
+### {{ group.name }}
+
+| Name | Description |
+| --- | --- |
+{% for test in group.tests -%}
+| [{{ test.name }}](#{{ test.name | replace(' ', '-') }}) | {{ test.desc }} |
 {% endfor %}
+{% endfor -%}
+
+## Test Cases
+{% for test in tests %}
+### {{ test.name }}
+
+{{ test.desc }}
+{% endfor -%}
