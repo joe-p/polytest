@@ -4,6 +4,27 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+fn get_group_comment(group: &str) -> String {
+    format!("Polytest Group: {}", group)
+}
+
+fn get_suite_comment(suite: &str) -> String {
+    format!("Polytest Suite: {}", suite)
+}
+
+fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
+    match original.find(keyword) {
+        Some(pos) => {
+            let mut result = String::with_capacity(original.len() + to_insert.len());
+            result.push_str(&original[..pos + keyword.len()]);
+            result.push_str(to_insert);
+            result.push_str(&original[pos + keyword.len()..]);
+            result
+        }
+        None => panic!("Keyword not found: {}", keyword),
+    }
+}
+
 fn case_from_str(s: &str) -> Result<Case, String> {
     match s {
         "Alternating" => Ok(Case::Alternating),
@@ -223,8 +244,23 @@ fn render_pytest(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
     let language_config = config.languages.get("python").unwrap();
     let out_dir = config_meta.root_dir.join(&language_config.out_dir);
 
-    env.add_template("pytest", include_str!("../templates/pytest.py.jinja"))
-        .unwrap();
+    env.add_template(
+        "pytest_suite",
+        include_str!("../templates/pytest/suite.py.jinja"),
+    )
+    .unwrap();
+
+    env.add_template(
+        "pytest_group",
+        include_str!("../templates/pytest/group.py.jinja"),
+    )
+    .unwrap();
+
+    env.add_template(
+        "pytest_test",
+        include_str!("../templates/pytest/test.py.jinja"),
+    )
+    .unwrap();
 
     let suite_values: Vec<Suite> = config
         .suites
@@ -232,16 +268,45 @@ fn render_pytest(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
         .map(|s| Suite::from_config(config, s))
         .collect();
 
-    let py_template = env.get_template("pytest").unwrap();
+    let suite_template = env.get_template("pytest_suite").unwrap();
+    let group_template = env.get_template("pytest_group").unwrap();
+    let test_template = env.get_template("pytest_test").unwrap();
 
-    for suite in suite_values {
-        let pytest = py_template
+    for suite in &suite_values {
+        let suite_file = out_dir.join(format!("test_{}.py", &suite.name));
+
+        let mut contents = suite_template
             .render(minijinja::context! {
-                suite => minijinja::Value::from_serialize(&suite),
+                suite => minijinja::Value::from_serialize(suite),
             })
             .unwrap();
 
-        std::fs::write(out_dir.join(format!("test_{}.py", suite.name)), pytest).unwrap();
+        let suite_comment = get_suite_comment(&suite.name);
+
+        for group in &suite.groups {
+            let rendered_group = group_template
+                .render(minijinja::context! {
+                    group => minijinja::Value::from_serialize(group),
+                })
+                .unwrap();
+
+            contents = insert_after_keyword(&contents, &rendered_group, &suite_comment);
+
+            for test in &group.tests {
+                let rendered_test = test_template
+                    .render(minijinja::context! {
+                        test => minijinja::Value::from_serialize(test),
+                        group_name => minijinja::Value::from(&group.name),
+                    })
+                    .unwrap();
+
+                let group_comment = get_group_comment(&group.name);
+
+                contents = insert_after_keyword(&contents, &rendered_test, &group_comment);
+            }
+        }
+
+        std::fs::write(&suite_file, contents).unwrap();
     }
 }
 
