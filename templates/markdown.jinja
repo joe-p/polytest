@@ -1,31 +1,32 @@
 # Polytest Test Plan
 ## Test Suites
+{% for suite in suites %}
 
-{% for suite in suites -%}
 ### {{ suite.name | convert_case('Title') }}
 
 | Name | Description |
 | --- | --- |
-{% for group in suite.groups -%}
+{% for group in suite.groups %}
 | [{{ group.name }}](#{{ group.name | convert_case('Kebab') }}) | {{ group.desc }} |
 {% endfor %}
-{% endfor -%}
+{% endfor %}
 
 ## Test Groups
+{% for group in groups %}
 
-{% for group in groups -%}
 ### {{ group.name | convert_case('Title') }}
 
 | Name | Description |
 | --- | --- |
-{% for test in group.tests -%}
+{% for test in group.tests %}
 | [{{ test.name }}](#{{ test.name | convert_case('Kebab') }}) | {{ test.desc }} |
 {% endfor %}
-{% endfor -%}
+{% endfor %}
 
 ## Test Cases
 {% for test in tests %}
+
 ### {{ test.name }}
 
 {{ test.desc }}
-{% endfor -%}
+{% endfor %}

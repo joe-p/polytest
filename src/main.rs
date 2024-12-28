@@ -182,10 +182,15 @@ fn main() {
                 .language
                 .unwrap_or(vec!["python".to_string(), "markdown".to_string()]);
 
+            let mut env = minijinja::Environment::new();
+            env.add_filter("convert_case", convert_case_filter);
+            env.set_lstrip_blocks(true);
+            env.set_trim_blocks(true);
+
             for language in languages {
                 match language.as_str() {
-                    "python" => render_pytest(&config),
-                    "markdown" => render_markdown(&config),
+                    "python" => render_pytest(&config, &mut env),
+                    "markdown" => render_markdown(&config, &mut env),
                     _ => panic!("Unsupported language: {}", language),
                 }
             }
@@ -193,9 +198,7 @@ fn main() {
     }
 }
 
-fn render_pytest(config: &Config) {
-    let mut env = minijinja::Environment::new();
-    env.add_filter("convert_case", convert_case_filter);
+fn render_pytest(config: &Config, env: &mut minijinja::Environment) {
     env.add_template("pytest", include_str!("../templates/pytest.py.jinja"))
         .unwrap();
 
@@ -222,7 +225,7 @@ fn render_pytest(config: &Config) {
     }
 }
 
-fn render_markdown(config: &Config) {
+fn render_markdown(config: &Config, env: &mut minijinja::Environment) {
     let suite_values: Vec<Suite> = config
         .suites
         .iter()
@@ -237,10 +240,8 @@ fn render_markdown(config: &Config) {
 
     let test_values: Vec<Test> = config.tests.iter().map(Test::from_config).collect();
 
-    let mut env = minijinja::Environment::new();
     env.add_template("markdown", include_str!("../templates/markdown.jinja"))
         .unwrap();
-    env.add_filter("convert_case", convert_case_filter);
 
     let md_template = env.get_template("markdown").unwrap();
     let markdown = md_template
