@@ -1,0 +1,13 @@
+# Polytest Test Plan
+## Test Suites
+
+{% for suite in config.suite %}
+### {{ suite.id }}
+
+| Name | Description |
+| --- | --- |
+{% for group in suite.groups %}
+| [{{ group.id }}](#{{ group.id }}) | {{ group.desc }} |
+{% endfor %}
+
+{% endfor %}

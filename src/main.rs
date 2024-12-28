@@ -1,7 +1,7 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Debug, Clone)]
-pub struct PolytestConfig {
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Config {
     #[serde(rename = "suite")]
     pub suites: Vec<Suite>,
 
@@ -12,14 +12,21 @@ pub struct PolytestConfig {
     pub tests: Vec<Test>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+impl Config {
+    pub fn from_file(path: &str) -> Self {
+        let contents = std::fs::read_to_string(path).unwrap();
+        toml::from_str(&contents).unwrap()
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Suite {
     pub id: String,
     pub name: Option<String>,
     pub groups: Vec<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Group {
     pub id: String,
     pub tests: Vec<String>,
@@ -27,31 +34,35 @@ pub struct Group {
     pub desc: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Test {
     pub id: String,
     pub name: Option<String>,
     pub desc: Option<String>,
 }
 
-impl PolytestConfig {
-    pub fn from_file(path: &str) -> Self {
-        let contents = std::fs::read_to_string(path).unwrap();
-        toml::from_str(&contents).unwrap()
-    }
-}
-
 fn main() {
-    let config = PolytestConfig::from_file("examples/vehicles/polytest.toml");
+    let config = Config::from_file("examples/vehicles/polytest.toml");
     println!("{:?}", config);
     generate_markdown(&config);
+    let jinja_value = minijinja::Value::from_serialize(&config);
+    let mut env = minijinja::Environment::new();
+    env.add_template("markdown", include_str!("../templates/markdown.jinja"))
+        .unwrap();
+    let template = env.get_template("markdown").unwrap();
+    println!(
+        "{}",
+        template
+            .render(minijinja::context! { config => jinja_value })
+            .unwrap()
+    );
 }
 
 fn get_anchor(id: &str) -> String {
     id.replace(" ", "-")
 }
 
-fn generate_markdown(config: &PolytestConfig) {
+fn generate_markdown(config: &Config) {
     let mut markdown = String::new();
     markdown.push_str("# Polytest Test Plan\n");
 
