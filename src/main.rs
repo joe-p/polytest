@@ -121,17 +121,50 @@ impl Test {
 
 fn main() {
     let config = Config::from_file("examples/vehicles/polytest.toml");
+    render_markdown(&config);
+    render_pytest(&config);
+}
+
+fn render_pytest(config: &Config) {
+    let mut env = minijinja::Environment::new();
+
+    env.add_template("pytest", include_str!("../templates/pytest.py.jinja"))
+        .unwrap();
 
     let suite_values: Vec<Suite> = config
         .suites
         .iter()
-        .map(|s| Suite::from_config(&config, s))
+        .map(|s| Suite::from_config(config, s))
+        .collect();
+
+    let py_template = env.get_template("pytest").unwrap();
+
+    for suite in suite_values {
+        let pytest = py_template
+            .render(minijinja::context! {
+                suite => minijinja::Value::from_serialize(&suite),
+            })
+            .unwrap();
+
+        std::fs::write(
+            format!("examples/vehicles/py/test_{}.py", suite.name),
+            pytest,
+        )
+        .unwrap();
+    }
+}
+
+fn render_markdown(config: &Config) {
+    let suite_values: Vec<Suite> = config
+        .suites
+        .iter()
+        .map(|s| Suite::from_config(config, s))
         .collect();
 
     let group_values: Vec<Group> = config
         .groups
         .iter()
-        .map(|g| Group::from_config(&config, g))
+        .map(|g| Group::from_config(config, g))
         .collect();
 
     let test_values: Vec<Test> = config.tests.iter().map(Test::from_config).collect();
@@ -139,8 +172,9 @@ fn main() {
     let mut env = minijinja::Environment::new();
     env.add_template("markdown", include_str!("../templates/markdown.jinja"))
         .unwrap();
-    let template = env.get_template("markdown").unwrap();
-    let markdown = template
+
+    let md_template = env.get_template("markdown").unwrap();
+    let markdown = md_template
         .render(minijinja::context! {
             suites => minijinja::Value::from_serialize(&suite_values),
             groups => minijinja::Value::from_serialize(&group_values),

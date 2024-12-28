@@ -1,0 +1,12 @@
+import pytest
+
+{%- for group in suite.groups %}
+{%- for test in group.tests %}
+
+@pytest.mark.group_{{ group.name | replace(' ', '_') }}
+def test_{{ test.name | replace(' ', '_') }}():
+    """{{ test.desc }}"""
+    raise Exception("TEST NOT IMPLEMENTED")
+
+{%- endfor %}
+{%- endfor %}
