@@ -1,3 +1,4 @@
+use clap::{command, Args, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Debug, Clone)]
@@ -119,10 +120,45 @@ impl Test {
     }
 }
 
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+#[command(propagate_version = true)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Generate test files
+    Generate(Generate),
+}
+
+#[derive(Args)]
+struct Generate {
+    /// The language to generate tests for
+    #[arg(short, long)]
+    language: Option<Vec<String>>,
+}
+
 fn main() {
+    let parsed = Cli::parse();
     let config = Config::from_file("examples/vehicles/polytest.toml");
-    render_markdown(&config);
-    render_pytest(&config);
+    match parsed.command {
+        Commands::Generate(generate) => {
+            let languages = generate
+                .language
+                .unwrap_or(vec!["python".to_string(), "markdown".to_string()]);
+
+            for language in languages {
+                match language.as_str() {
+                    "python" => render_pytest(&config),
+                    "markdown" => render_markdown(&config),
+                    _ => panic!("Unsupported language: {}", language),
+                }
+            }
+        }
+    }
 }
 
 fn render_pytest(config: &Config) {
