@@ -1,5 +1,7 @@
 import pytest
 
+# This is a hand-written comment that won't get overwritten because Polytest adds tests rather than overwriting the entire file
+
 # Polytest Suite: car
 
 # Polytest Group: broken vehicle

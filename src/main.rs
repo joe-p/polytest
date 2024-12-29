@@ -1,16 +1,20 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+const GROUP_COMMENT: &str = "Polytest Group:";
+const SUITE_COMMENT: &str = "Polytest Suite:";
+
 fn get_group_comment(group: &str) -> String {
-    format!("Polytest Group: {}", group)
+    format!("{} {}", GROUP_COMMENT, group)
 }
 
 fn get_suite_comment(suite: &str) -> String {
-    format!("Polytest Suite: {}", suite)
+    format!("{} {}", SUITE_COMMENT, suite)
 }
 
 fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
@@ -82,6 +86,7 @@ pub struct Target {
     id: String,
     out_dir: PathBuf,
     file_name_template: String,
+    test_regex_template: String,
 
     suite_template: Option<String>,
     group_template: Option<String>,
@@ -98,6 +103,7 @@ impl Target {
             "pytest" => {
                 return Ok(Self {
                     id: id.to_string(),
+                    test_regex_template: "def test_{{ name | convert_case('Snake') }}".to_string(),
                     file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
                         .to_string(),
                     out_dir: config_root.join(&config.out_dir),
@@ -116,6 +122,7 @@ impl Target {
             "bun" => {
                 return Ok(Self {
                     id: id.to_string(),
+                    test_regex_template: "test\\(\"{{ name }}".to_string(),
                     file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
                         .to_string(),
                     out_dir: config_root.join(&config.out_dir),
@@ -132,6 +139,7 @@ impl Target {
             "markdown" => {
                 return Ok(Self {
                     id: id.to_string(),
+                    test_regex_template: String::new(),
                     file_name_template: "{{ name | convert_case('Snake') }}.md".to_string(),
                     out_dir: config_root.join(&config.out_dir),
                     suite_template: None,
@@ -149,6 +157,14 @@ impl Target {
 
         let mut target = Self {
             id: id.to_string(),
+            test_regex_template: config
+                .test_regex_template
+                .as_ref()
+                .ok_or(anyhow!(
+                    "test_regex_template option is missing for target {}",
+                    id
+                ))?
+                .to_string(),
             out_dir: config_root.join(&config.out_dir),
             file_name_template: config
                 .file_name_template
@@ -253,6 +269,7 @@ pub struct Config {
 pub struct TargetConfig {
     out_dir: PathBuf,
 
+    test_regex_template: Option<String>,
     file_name_template: Option<String>,
     suite_template_path: Option<PathBuf>,
     group_template_path: Option<PathBuf>,
@@ -402,6 +419,32 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn get_groups(input: &str) -> Vec<String> {
+    let re = Regex::new(format!(r"{} (.*)", GROUP_COMMENT).as_str()).unwrap();
+    let mut groups = Vec::new();
+    for cap in re.captures_iter(input) {
+        groups.push(cap[1].to_string().trim().to_string());
+    }
+    groups
+}
+
+fn find_test(
+    input: &str,
+    target: &Target,
+    name: &str,
+    env: &minijinja::Environment,
+) -> Result<bool> {
+    let template = env.get_template(format!("{}_test_regex", target.id).as_str())?;
+    let regex = template
+        .render(minijinja::context! {
+            name => minijinja::Value::from(name),
+        })
+        .context(format!("failed to render test regex for {}", target.id))?;
+
+    let re = Regex::new(&regex).unwrap();
+    Ok(re.is_match(input))
+}
+
 fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
     let mut env = minijinja::Environment::new();
     env.add_filter("convert_case", convert_case_filter);
@@ -468,6 +511,16 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
                 target_id
             ))?;
 
+        let test_regex_template_name = format!("{}_test_regex", target_id);
+        env.add_template(
+            test_regex_template_name.as_str(),
+            &target.test_regex_template,
+        )
+        .context(format!(
+            "failed to add template for {} test regex",
+            target_id
+        ))?;
+
         generate_multi_file(config_meta, &target, &env)?;
 
         env.remove_template(suite_template_name.as_str());
@@ -520,15 +573,33 @@ fn generate_multi_file(
 
         let suite_file = target.out_dir.join(&suite_file_name);
 
-        let mut contents = suite_template
-            .render(minijinja::context! {
-                suite => minijinja::Value::from_serialize(suite),
-            })
-            .context(format!("failed to render suite for {}", target.id))?;
+        let mut contents: String;
+
+        if suite_file.exists() {
+            println!("{} exists, reading content...", suite_file.display());
+            contents = std::fs::read_to_string(&suite_file).context(format!(
+                "failed to read existing suite file for {}",
+                target.id
+            ))?;
+        } else {
+            contents = suite_template
+                .render(minijinja::context! {
+                    suite => minijinja::Value::from_serialize(suite),
+                })
+                .context(format!("failed to render suite for {}", target.id))?;
+        }
 
         let suite_comment = get_suite_comment(&suite.name);
 
-        for group in &suite.groups {
+        let existing_groups = get_groups(&contents);
+
+        let missing_groups: Vec<&Group> = suite
+            .groups
+            .iter()
+            .filter(|g| !existing_groups.contains(&g.name))
+            .collect();
+
+        for group in &missing_groups {
             let rendered_group = group_template
                 .render(minijinja::context! {
                     group => minijinja::Value::from_serialize(group),
@@ -539,8 +610,19 @@ fn generate_multi_file(
                 ))?;
 
             contents = insert_after_keyword(&contents, &rendered_group, &suite_comment);
+        }
 
+        for group in &suite.groups {
             for test in &group.tests {
+                if find_test(&contents, target, &test.name, env)? {
+                    println!(
+                        "test \"{}\" already exists in {}. Skipping...",
+                        test.name,
+                        suite_file.display()
+                    );
+                    continue;
+                }
+
                 let rendered_test = test_template
                     .render(minijinja::context! {
                         test => minijinja::Value::from_serialize(test),
