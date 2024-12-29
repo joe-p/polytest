@@ -1,19 +1,30 @@
+# The name of the test plan
 name = "vehicles example"
 
+# A target defines how the tests will be generated and validated
+# Polytest includes some targets out of the box, in which case you just need to specify the output directory
+
+# The pytest target will generate Python tests for pytest
 [target.pytest]
 out_dir = "./generated/pytest"
 
+# The markdown target will generate a markdown file with the test plan
 [target.markdown]
 out_dir = "./generated"
 
+# The bun target will generate TypeScript tests for the bun test runner
 [target.bun]
 out_dir = "./generated/bun"
 
-# Each suite, group, and test table must contain a unique identifier. These tables may also have:
+# Each suite, group, and test are defined in a table with a unique identifier. 
+# The identifier should be fairly short and easy to read/write within this file.
+#
+# These tables may also have the following fields:
 # - name: a human readable name that will be used in the generated tests (i.e. the test name in jest)
 # - desc: a description that will show up in the generated tests as a comment
 #
-# `name` and `desc` will also be used when generating the markdown file
+# If a name is not provided, the identifier will be used as the name
+# If a desc is not provided, it will be an empty string
 
 # Suites are the top level of the test hierarchy and contain groups of tests
 # Each suite typically maps to a new test file in the generated test directory
@@ -27,7 +38,7 @@ groups = ["valid_vehicle", "invalid_vehicle", "broken_vehicle"]
 
 [group.valid_vehicle]
 name = "valid vehicle"
-tests = ["valid_headlights", "valid_tires"] # array of test ids
+tests = ["valid_headlights", "valid_tires"]
 desc = "Functionality works as expected when the vehicle is valid and not missing any parts"
 
 [group.invalid_vehicle]
