@@ -311,7 +311,7 @@ impl Suite {
                 .groups
                 .iter()
                 .filter_map(|(id, g)| {
-                    if suite_config.groups.contains(&id) {
+                    if suite_config.groups.contains(id) {
                         Some(Group::from_config(config, g, id))
                     } else {
                         None
