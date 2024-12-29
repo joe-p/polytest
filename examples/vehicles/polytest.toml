@@ -1,7 +1,7 @@
-[language.python]
+[target.pytest]
 out_dir = "py"
 
-[language.markdown]
+[target.markdown]
 out_dir = "."
 
 # Each suite, group, and test table must contain a unique identifier. These tables may also have:

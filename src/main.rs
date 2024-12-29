@@ -74,8 +74,8 @@ impl ConfigMeta {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
-    #[serde(rename = "language")]
-    pub languages: HashMap<String, LanguageConfig>,
+    #[serde(rename = "target")]
+    pub targets: HashMap<String, TargetConfig>,
 
     #[serde(rename = "suite")]
     pub suites: Vec<SuiteConfig>,
@@ -88,7 +88,7 @@ pub struct Config {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct LanguageConfig {
+pub struct TargetConfig {
     pub out_dir: PathBuf,
 }
 
@@ -208,9 +208,9 @@ enum Commands {
 
 #[derive(Args)]
 struct Generate {
-    /// The language to generate tests for
+    /// The target to generate tests for
     #[arg(short, long)]
-    language: Option<Vec<String>>,
+    target: Option<Vec<String>>,
 }
 
 fn main() {
@@ -219,20 +219,20 @@ fn main() {
 
     match parsed.command {
         Commands::Generate(generate) => {
-            let languages = generate
-                .language
-                .unwrap_or(vec!["python".to_string(), "markdown".to_string()]);
+            let targets = generate
+                .target
+                .unwrap_or(vec!["pytest".to_string(), "markdown".to_string()]);
 
             let mut env = minijinja::Environment::new();
             env.add_filter("convert_case", convert_case_filter);
             env.set_lstrip_blocks(true);
             env.set_trim_blocks(true);
 
-            for language in languages {
-                match language.as_str() {
-                    "python" => render_pytest(&config_meta, &mut env),
+            for target in targets {
+                match target.as_str() {
+                    "pytest" => render_pytest(&config_meta, &mut env),
                     "markdown" => render_markdown(&config_meta, &mut env),
-                    _ => panic!("Unsupported language: {}", language),
+                    _ => panic!("Unsupported target: {}", target),
                 }
             }
         }
@@ -241,8 +241,8 @@ fn main() {
 
 fn render_pytest(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
     let config = &config_meta.config;
-    let language_config = config.languages.get("python").unwrap();
-    let out_dir = config_meta.root_dir.join(&language_config.out_dir);
+    let target_config = config.targets.get("pytest").unwrap();
+    let out_dir = config_meta.root_dir.join(&target_config.out_dir);
 
     env.add_template(
         "pytest_suite",
