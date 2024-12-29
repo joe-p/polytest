@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
 use serde::{Deserialize, Serialize};
@@ -25,7 +26,7 @@ fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> Strin
     }
 }
 
-fn case_from_str(s: &str) -> Result<Case, String> {
+fn case_from_str(s: &str) -> Result<Case> {
     match s {
         "Alternating" => Ok(Case::Alternating),
         "Camel" => Ok(Case::Camel),
@@ -43,7 +44,7 @@ fn case_from_str(s: &str) -> Result<Case, String> {
         "UpperCamel" => Ok(Case::UpperCamel),
         "UpperFlat" => Ok(Case::UpperFlat),
         "UpperKebab" => Ok(Case::UpperKebab),
-        _ => Err(format!(
+        _ => Err(anyhow!(
             "Unsupported case: {}. Supported cases are: Alternating, Camel, Cobol, Flat, Kebab, \
              Lower, Pascal, Snake, ScreamingSnake/UpperSnake, Title, Toggle, Train, Upper, \
              UpperCamel, UpperFlat, UpperKebab",
@@ -53,7 +54,9 @@ fn case_from_str(s: &str) -> Result<Case, String> {
 }
 
 pub fn convert_case_filter(input: &str, case: &str) -> String {
-    input.to_case(case_from_str(case).unwrap())
+    input.to_case(case_from_str(case).unwrap_or_else(|e| {
+        panic!("failed to convert case: {}", e);
+    }))
 }
 
 pub struct ConfigMeta {
@@ -62,13 +65,16 @@ pub struct ConfigMeta {
 }
 
 impl ConfigMeta {
-    pub fn from_file(path: &str) -> Self {
-        let contents = std::fs::read_to_string(path).unwrap();
-        let config = toml::from_str(&contents).unwrap();
-        Self {
-            root_dir: PathBuf::from(path).parent().unwrap().to_path_buf(),
+    pub fn from_file(path: &str) -> Result<Self> {
+        let contents = std::fs::read_to_string(path).context("failed to read config file")?;
+        let config = toml::from_str(&contents).context("failed to parse config file")?;
+        Ok(Self {
+            root_dir: PathBuf::from(path)
+                .parent()
+                .unwrap_or(PathBuf::from(".").as_path())
+                .to_path_buf(),
             config,
-        }
+        })
     }
 }
 
@@ -87,10 +93,10 @@ const DEFAULT_SINGLE_FILE_TARGETS: [&str; 1] = ["markdown"];
 const DEFAULT_MULTI_FILE_TARGETS: [&str; 1] = ["pytest"];
 
 impl Target {
-    pub fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Self {
+    pub fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
         match id {
             "pytest" => {
-                return Self {
+                return Ok(Self {
                     id: id.to_string(),
                     file_name_template: "test_{{ suite.name }}.py".to_string(),
                     out_dir: config_root.join(&config.out_dir),
@@ -104,10 +110,10 @@ impl Target {
                         include_str!("../templates/pytest/test.py.jinja").to_string(),
                     ),
                     single_file_template: None,
-                }
+                });
             }
             "markdown" => {
-                return Self {
+                return Ok(Self {
                     id: id.to_string(),
                     file_name_template: "{{ name | convert_case('Snake') }}.md".to_string(),
                     out_dir: config_root.join(&config.out_dir),
@@ -117,7 +123,7 @@ impl Target {
                     single_file_template: Some(
                         include_str!("../templates/markdown/single_file.md.jinja").to_string(),
                     ),
-                }
+                });
             }
             _ => {
                 println!("Loading custom target: {}", id);
@@ -130,7 +136,10 @@ impl Target {
             file_name_template: config
                 .file_name_template
                 .as_ref()
-                .expect("file_name_template should be set")
+                .ok_or(anyhow!(
+                    "file_name_template option is missing for target {}",
+                    id
+                ))?
                 .to_string(),
             suite_template: None,
             group_template: None,
@@ -141,45 +150,68 @@ impl Target {
         let mut loaded_suite = false;
         if let Some(suite_template_path) = &config.suite_template_path {
             if DEFAULT_SINGLE_FILE_TARGETS.contains(&id) {
-                panic!("Suite template path provided for single file target");
+                return Err(anyhow!(
+                    "Suite template path provided for single file target"
+                ));
             }
-            target.suite_template = Some(std::fs::read_to_string(suite_template_path).unwrap());
+            target.suite_template = Some(
+                std::fs::read_to_string(suite_template_path)
+                    .context(format!("failed to read suite template file for {}", id))?,
+            );
             loaded_suite = true;
         }
 
         let mut loaded_group = false;
         if let Some(group_template_path) = &config.group_template_path {
             if !loaded_suite {
-                panic!("Group template path provided without suite template path");
+                return Err(anyhow!(
+                    "Group template path provided without suite template path"
+                ));
             }
-            target.group_template = Some(std::fs::read_to_string(group_template_path).unwrap());
+            target.group_template = Some(
+                std::fs::read_to_string(group_template_path)
+                    .context(format!("failed to read group template file for {}", id))?,
+            );
             loaded_group = true;
         }
 
         if let Some(test_template_path) = &config.test_template_path {
             if !loaded_group {
-                panic!("Test template path provided without group template path");
+                return Err(anyhow!(
+                    "Test template path provided without group template path"
+                ));
             }
-            target.test_template = Some(std::fs::read_to_string(test_template_path).unwrap());
+            target.test_template = Some(
+                std::fs::read_to_string(test_template_path)
+                    .context(format!("failed to read test template file for {}", id))?,
+            );
         }
 
         if let Some(single_file_template_path) = &config.single_file_template_path {
             if DEFAULT_MULTI_FILE_TARGETS.contains(&id) {
-                panic!("Single file template path provided for multi file target");
+                return Err(anyhow!(
+                    "Single file template path provided for multi file target"
+                ));
             }
 
             if loaded_suite {
-                panic!("Cannot provide single file template path with suite template path");
+                return Err(anyhow!(
+                    "Cannot provide single file template path with suite template path"
+                ));
             }
-            target.single_file_template =
-                Some(std::fs::read_to_string(single_file_template_path).unwrap());
+            target.single_file_template = Some(
+                std::fs::read_to_string(single_file_template_path).context(format!(
+                    "failed to read single file template file for {}",
+                    id
+                ))?,
+            );
         }
 
         if target.suite_template.is_none() && target.single_file_template.is_none() {
-            panic!("No suite or single file template provided");
+            return Err(anyhow!("No suite or single file template provided"));
         }
 
-        target
+        Ok(target)
     }
 }
 
@@ -332,9 +364,9 @@ struct Generate {
     target: Option<Vec<String>>,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let parsed = Cli::parse();
-    let config_meta = ConfigMeta::from_file("examples/vehicles/polytest.toml");
+    let config_meta = ConfigMeta::from_file("examples/vehicles/polytest.toml")?;
 
     match parsed.command {
         Commands::Generate(generate) => {
@@ -343,34 +375,48 @@ fn main() {
                 .unwrap_or(vec!["pytest".to_string(), "markdown".to_string()]);
 
             for target in targets {
-                generate_target(&config_meta, &target);
+                generate_target(&config_meta, &target)?;
             }
         }
     }
+
+    Ok(())
 }
 
-fn generate_target(config_meta: &ConfigMeta, target_id: &str) {
+fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
     let mut env = minijinja::Environment::new();
     env.add_filter("convert_case", convert_case_filter);
     env.set_lstrip_blocks(true);
     env.set_trim_blocks(true);
 
-    let target_config = config_meta.config.targets.get(target_id).unwrap();
-    let target = Target::from_config(target_config, target_id, &config_meta.root_dir);
+    let target_config = config_meta
+        .config
+        .targets
+        .get(target_id)
+        .context(format!("could not find config for {}. Add [target.{}] to your configuration file with the required values", target_id, target_id))?;
+
+    let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
     if let Some(single_file_template) = &target.single_file_template {
         let template_name = format!("{}_single_file", target_id);
         env.add_template(template_name.as_str(), single_file_template)
-            .unwrap();
+            .context(format!(
+                "failed to add template for {} single file",
+                target_id
+            ))?;
 
         let file_template_name = format!("{}_file_name", target_id);
         env.add_template(file_template_name.as_str(), &target.file_name_template)
-            .unwrap();
+            .context(format!(
+                "failed to add template for {} file name",
+                target_id
+            ))?;
 
-        generate_single_file(config_meta, &target, &env);
+        generate_single_file(config_meta, &target, &env)?;
 
         env.remove_template(template_name.as_str());
         env.remove_template(file_template_name.as_str());
+        Ok(())
     } else {
         let suite_template_name = format!("{}_suite", target_id);
         let suite_template = target
@@ -378,7 +424,7 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) {
             .as_ref()
             .expect("suite_template should be set by from_config");
         env.add_template(suite_template_name.as_str(), suite_template)
-            .unwrap();
+            .context(format!("failed to add template for {} suite", target_id))?;
 
         let group_template_name = format!("{}_group", target_id);
         let group_template = target
@@ -386,7 +432,7 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) {
             .as_ref()
             .expect("group_template should be set by from_config");
         env.add_template(group_template_name.as_str(), group_template)
-            .unwrap();
+            .context(format!("failed to add template for {} group", target_id))?;
 
         let test_template_name = format!("{}_test", target_id);
         let test_template = target
@@ -394,22 +440,30 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) {
             .as_ref()
             .expect("test_template should be set by from_config");
         env.add_template(test_template_name.as_str(), test_template)
-            .unwrap();
+            .context(format!("failed to add template for {} test", target_id))?;
 
         let file_template_name = format!("{}_file_name", target_id);
         env.add_template(file_template_name.as_str(), &target.file_name_template)
-            .unwrap();
+            .context(format!(
+                "failed to add template for {} file name",
+                target_id
+            ))?;
 
-        generate_multi_file(config_meta, &target, &env);
+        generate_multi_file(config_meta, &target, &env)?;
 
         env.remove_template(suite_template_name.as_str());
         env.remove_template(group_template_name.as_str());
         env.remove_template(test_template_name.as_str());
         env.remove_template(file_template_name.as_str());
+        Ok(())
     }
 }
 
-fn generate_multi_file(config_meta: &ConfigMeta, target: &Target, env: &minijinja::Environment) {
+fn generate_multi_file(
+    config_meta: &ConfigMeta,
+    target: &Target,
+    env: &minijinja::Environment,
+) -> Result<()> {
     let config = &config_meta.config;
 
     let suite_values: Vec<Suite> = config
@@ -419,31 +473,39 @@ fn generate_multi_file(config_meta: &ConfigMeta, target: &Target, env: &minijinj
         .collect();
 
     let suite_template_name = format!("{}_suite", target.id);
-    let suite_template = env.get_template(suite_template_name.as_str()).unwrap();
+    let suite_template = env
+        .get_template(suite_template_name.as_str())
+        .expect("suite template should have been adedd by generate_target");
 
     let group_template_name = format!("{}_group", target.id);
-    let group_template = env.get_template(group_template_name.as_str()).unwrap();
+    let group_template = env
+        .get_template(group_template_name.as_str())
+        .expect("group template should have been adedd by generate_target");
 
     let test_template_name = format!("{}_test", target.id);
-    let test_template = env.get_template(test_template_name.as_str()).unwrap();
+    let test_template = env
+        .get_template(test_template_name.as_str())
+        .expect("test template should have been adedd by generate_target");
 
     let file_template_name = format!("{}_file_name", target.id);
-    let file_template = env.get_template(file_template_name.as_str()).unwrap();
+    let file_template = env
+        .get_template(file_template_name.as_str())
+        .expect("file template should have been adedd by generate_target");
 
     for suite in &suite_values {
         let suite_file_name = file_template
             .render(minijinja::context! {
                 suite => minijinja::Value::from_serialize(suite),
             })
-            .unwrap();
+            .context(format!("failed to render file name for {}", target.id))?;
 
-        let suite_file = target.out_dir.join(suite_file_name);
+        let suite_file = target.out_dir.join(&suite_file_name);
 
         let mut contents = suite_template
             .render(minijinja::context! {
                 suite => minijinja::Value::from_serialize(suite),
             })
-            .unwrap();
+            .context(format!("failed to render suite for {}", target.id))?;
 
         let suite_comment = get_suite_comment(&suite.name);
 
@@ -452,7 +514,10 @@ fn generate_multi_file(config_meta: &ConfigMeta, target: &Target, env: &minijinj
                 .render(minijinja::context! {
                     group => minijinja::Value::from_serialize(group),
                 })
-                .unwrap();
+                .context(format!(
+                    "failed to render group {} for {}",
+                    group.name, target.id
+                ))?;
 
             contents = insert_after_keyword(&contents, &rendered_group, &suite_comment);
 
@@ -462,7 +527,10 @@ fn generate_multi_file(config_meta: &ConfigMeta, target: &Target, env: &minijinj
                         test => minijinja::Value::from_serialize(test),
                         group_name => minijinja::Value::from(&group.name),
                     })
-                    .unwrap();
+                    .context(format!(
+                        "failed to render test {} for group {}",
+                        test.name, group.name
+                    ))?;
 
                 let group_comment = get_group_comment(&group.name);
 
@@ -470,11 +538,20 @@ fn generate_multi_file(config_meta: &ConfigMeta, target: &Target, env: &minijinj
             }
         }
 
-        std::fs::write(&suite_file, contents).unwrap();
+        std::fs::write(&suite_file, contents).context(format!(
+            "failed to write suite file {} for {}",
+            &suite_file_name, target.id
+        ))?;
     }
+
+    Ok(())
 }
 
-fn generate_single_file(config_meta: &ConfigMeta, target: &Target, env: &minijinja::Environment) {
+fn generate_single_file(
+    config_meta: &ConfigMeta,
+    target: &Target,
+    env: &minijinja::Environment,
+) -> Result<()> {
     let config = &config_meta.config;
     let suite_values: Vec<Suite> = config
         .suites
@@ -492,7 +569,7 @@ fn generate_single_file(config_meta: &ConfigMeta, target: &Target, env: &minijin
 
     let template = env
         .get_template(format!("{}_single_file", target.id).as_str())
-        .unwrap();
+        .expect("single file template should have been adedd by generate_target");
 
     let content = template
         .render(minijinja::context! {
@@ -500,18 +577,21 @@ fn generate_single_file(config_meta: &ConfigMeta, target: &Target, env: &minijin
             groups => minijinja::Value::from_serialize(&group_values),
             tests => minijinja::Value::from_serialize(&test_values)
         })
-        .unwrap();
+        .context(format!("failed to render single file for {}", target.id))?;
 
     let file_name_template = env
         .get_template(format!("{}_file_name", target.id).as_str())
-        .unwrap();
+        .expect("file name template should have been adedd by generate_target");
 
     let file_name = file_name_template
         .render(minijinja::context! {
             name => minijinja::Value::from(&config.name),
         })
-        .unwrap();
+        .context(format!("failed to render file name for {}", target.id))?;
 
     let file_path = target.out_dir.join(file_name);
-    std::fs::write(file_path, content).unwrap();
+    std::fs::write(file_path, content)
+        .context(format!("failed to write single file for {}", target.id))?;
+
+    Ok(())
 }
