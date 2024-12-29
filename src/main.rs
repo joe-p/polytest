@@ -2,7 +2,7 @@ use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 fn get_group_comment(group: &str) -> String {
     format!("Polytest Group: {}", group)
@@ -72,6 +72,117 @@ impl ConfigMeta {
     }
 }
 
+pub struct Target {
+    id: String,
+    out_dir: PathBuf,
+    file_name_template: String,
+
+    suite_template: Option<String>,
+    group_template: Option<String>,
+    test_template: Option<String>,
+    single_file_template: Option<String>,
+}
+
+const DEFAULT_SINGLE_FILE_TARGETS: [&str; 1] = ["markdown"];
+const DEFAULT_MULTI_FILE_TARGETS: [&str; 1] = ["pytest"];
+
+impl Target {
+    pub fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Self {
+        match id {
+            "pytest" => {
+                return Self {
+                    id: id.to_string(),
+                    file_name_template: "test_{{ suite.name }}.py".to_string(),
+                    out_dir: config_root.join(&config.out_dir),
+                    suite_template: Some(
+                        include_str!("../templates/pytest/suite.py.jinja").to_string(),
+                    ),
+                    group_template: Some(
+                        include_str!("../templates/pytest/group.py.jinja").to_string(),
+                    ),
+                    test_template: Some(
+                        include_str!("../templates/pytest/test.py.jinja").to_string(),
+                    ),
+                    single_file_template: None,
+                }
+            }
+            "markdown" => {
+                return Self {
+                    id: id.to_string(),
+                    file_name_template: "{{ name }}.md".to_string(),
+                    out_dir: config_root.join(&config.out_dir),
+                    suite_template: None,
+                    group_template: None,
+                    test_template: None,
+                    single_file_template: Some(
+                        include_str!("../templates/markdown/single_file.md.jinja").to_string(),
+                    ),
+                }
+            }
+            _ => {
+                println!("Loading custom target: {}", id);
+            }
+        };
+
+        let mut target = Self {
+            id: id.to_string(),
+            out_dir: config_root.join(&config.out_dir),
+            file_name_template: config
+                .file_name_template
+                .as_ref()
+                .expect("file_name_template should be set")
+                .to_string(),
+            suite_template: None,
+            group_template: None,
+            test_template: None,
+            single_file_template: None,
+        };
+
+        let mut loaded_suite = false;
+        if let Some(suite_template_path) = &config.suite_template_path {
+            if DEFAULT_SINGLE_FILE_TARGETS.contains(&id) {
+                panic!("Suite template path provided for single file target");
+            }
+            target.suite_template = Some(std::fs::read_to_string(suite_template_path).unwrap());
+            loaded_suite = true;
+        }
+
+        let mut loaded_group = false;
+        if let Some(group_template_path) = &config.group_template_path {
+            if !loaded_suite {
+                panic!("Group template path provided without suite template path");
+            }
+            target.group_template = Some(std::fs::read_to_string(group_template_path).unwrap());
+            loaded_group = true;
+        }
+
+        if let Some(test_template_path) = &config.test_template_path {
+            if !loaded_group {
+                panic!("Test template path provided without group template path");
+            }
+            target.test_template = Some(std::fs::read_to_string(test_template_path).unwrap());
+        }
+
+        if let Some(single_file_template_path) = &config.single_file_template_path {
+            if DEFAULT_MULTI_FILE_TARGETS.contains(&id) {
+                panic!("Single file template path provided for multi file target");
+            }
+
+            if loaded_suite {
+                panic!("Cannot provide single file template path with suite template path");
+            }
+            target.single_file_template =
+                Some(std::fs::read_to_string(single_file_template_path).unwrap());
+        }
+
+        if target.suite_template.is_none() && target.single_file_template.is_none() {
+            panic!("No suite or single file template provided");
+        }
+
+        target
+    }
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
     #[serde(rename = "target")]
@@ -89,7 +200,13 @@ pub struct Config {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct TargetConfig {
-    pub out_dir: PathBuf,
+    out_dir: PathBuf,
+
+    file_name_template: Option<String>,
+    suite_template_path: Option<PathBuf>,
+    group_template_path: Option<PathBuf>,
+    test_template_path: Option<PathBuf>,
+    single_file_template_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -223,19 +340,35 @@ fn main() {
                 .target
                 .unwrap_or(vec!["pytest".to_string(), "markdown".to_string()]);
 
-            let mut env = minijinja::Environment::new();
-            env.add_filter("convert_case", convert_case_filter);
-            env.set_lstrip_blocks(true);
-            env.set_trim_blocks(true);
-
             for target in targets {
-                match target.as_str() {
-                    "pytest" => render_pytest(&config_meta, &mut env),
-                    "markdown" => render_markdown(&config_meta, &mut env),
-                    _ => panic!("Unsupported target: {}", target),
-                }
+                generate_target(&config_meta, &target);
             }
         }
+    }
+}
+
+fn generate_target(config_meta: &ConfigMeta, target_id: &str) {
+    let mut env = minijinja::Environment::new();
+    env.add_filter("convert_case", convert_case_filter);
+    env.set_lstrip_blocks(true);
+    env.set_trim_blocks(true);
+
+    let target_config = config_meta.config.targets.get(target_id).unwrap();
+    let target = Target::from_config(target_config, target_id, &config_meta.root_dir);
+
+    if let Some(single_file_template) = &target.single_file_template {
+        let template_name = format!("{}_single_file", target_id);
+        env.add_template(template_name.as_str(), single_file_template)
+            .unwrap();
+
+        let file_template_name = format!("{}_file_name", target_id);
+        env.add_template(file_template_name.as_str(), &target.file_name_template)
+            .unwrap();
+
+        generate_single_file(config_meta, &target, &env);
+
+        env.remove_template(template_name.as_str());
+        env.remove_template(file_template_name.as_str());
     }
 }
 
@@ -310,7 +443,7 @@ fn render_pytest(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
     }
 }
 
-fn render_markdown(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
+fn generate_single_file(config_meta: &ConfigMeta, target: &Target, env: &minijinja::Environment) {
     let config = &config_meta.config;
     let suite_values: Vec<Suite> = config
         .suites
@@ -326,11 +459,11 @@ fn render_markdown(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
 
     let test_values: Vec<Test> = config.tests.iter().map(Test::from_config).collect();
 
-    env.add_template("markdown", include_str!("../templates/markdown.jinja"))
+    let template = env
+        .get_template(format!("{}_single_file", target.id).as_str())
         .unwrap();
 
-    let md_template = env.get_template("markdown").unwrap();
-    let markdown = md_template
+    let content = template
         .render(minijinja::context! {
             suites => minijinja::Value::from_serialize(&suite_values),
             groups => minijinja::Value::from_serialize(&group_values),
@@ -338,5 +471,17 @@ fn render_markdown(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
         })
         .unwrap();
 
-    std::fs::write("examples/vehicles/generated_markdown.md", markdown).unwrap();
+    let file_name_template = env
+        .get_template(format!("{}_file_name", target.id).as_str())
+        .unwrap();
+
+    let file_name = file_name_template
+        .render(minijinja::context! {
+            // TODO: Add name option to config
+            name => minijinja::Value::from("generated_markdown"),
+        })
+        .unwrap();
+
+    let file_path = target.out_dir.join(file_name);
+    std::fs::write(file_path, content).unwrap();
 }
