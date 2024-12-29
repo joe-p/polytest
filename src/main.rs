@@ -389,11 +389,21 @@ struct Cli {
 enum Commands {
     /// Generate test files
     Generate(Generate),
+
+    /// Validate test files
+    Validate(Validate),
 }
 
 #[derive(Args)]
 struct Generate {
     /// The target to generate tests for
+    #[arg(short, long)]
+    target: Option<Vec<String>>,
+}
+
+#[derive(Args)]
+struct Validate {
+    /// The target to validate tests for
     #[arg(short, long)]
     target: Option<Vec<String>>,
 }
@@ -414,6 +424,97 @@ fn main() -> Result<()> {
                 generate_target(&config_meta, &target)?;
             }
         }
+        Commands::Validate(validate) => {
+            let targets = validate
+                .target
+                .unwrap_or(vec!["pytest".to_string(), "bun".to_string()]);
+
+            for target in targets {
+                validate_target(&config_meta, &target)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
+    let target_config = config_meta
+        .config
+        .targets
+        .get(target_id)
+        .context(format!("could not find config for {}. Add [target.{}] to your configuration file with the required values", target_id, target_id))?;
+
+    let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
+
+    let file_template_name = format!("{}_file_name", target.id);
+    let mut env = minijinja::Environment::new();
+    env.add_filter("convert_case", convert_case_filter);
+    env.set_lstrip_blocks(true);
+    env.set_trim_blocks(true);
+
+    let suites: Vec<Suite> = config_meta
+        .config
+        .suites
+        .iter()
+        .map(|s| Suite::from_config(&config_meta.config, s))
+        .collect();
+
+    env.add_template(file_template_name.as_str(), &target.file_name_template)
+        .context(format!(
+            "failed to add template for {} file name",
+            target.id
+        ))?;
+
+    let test_regex_template_name = format!("{}_test_regex", target.id);
+    env.add_template(
+        test_regex_template_name.as_str(),
+        &target.test_regex_template,
+    )
+    .context(format!(
+        "failed to add template for {} test regex",
+        target.id
+    ))?;
+
+    let file_template = env
+        .get_template(file_template_name.as_str())
+        .context(format!("failed to get file template for {}", target.id))?;
+
+    for suite in &suites {
+        let suite_file_name = file_template
+            .render(minijinja::context! {
+                suite => minijinja::Value::from_serialize(suite),
+            })
+            .context(format!("failed to render file name for {}", target.id))?;
+
+        let suite_file = target.out_dir.join(&suite_file_name);
+        if !suite_file.exists() {
+            return Err(anyhow!(
+                "suite file {} does not exist",
+                suite_file.display()
+            ));
+        }
+
+        let contents = std::fs::read_to_string(&suite_file).context(format!(
+            "failed to read existing suite file for {}",
+            target.id
+        ))?;
+
+        for group in &suite.groups {
+            for test in &group.tests {
+                if !find_test(&contents, &target, &test.name, &env)? {
+                    return Err(anyhow!(
+                        "test \"{}\" does not exist in {}",
+                        test.name,
+                        suite_file.display()
+                    ));
+                } else {
+                    println!("test \"{}\" exists in {}", test.name, suite_file.display());
+                }
+            }
+        }
+
+        // TODO: Check if there are tests implemented that are not in the suite
     }
 
     Ok(())
