@@ -1,3 +1,5 @@
+name = "vehicles example"
+
 [target.pytest]
 out_dir = "py"
 

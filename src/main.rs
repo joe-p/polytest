@@ -109,7 +109,7 @@ impl Target {
             "markdown" => {
                 return Self {
                     id: id.to_string(),
-                    file_name_template: "{{ name }}.md".to_string(),
+                    file_name_template: "{{ name | convert_case('Snake') }}.md".to_string(),
                     out_dir: config_root.join(&config.out_dir),
                     suite_template: None,
                     group_template: None,
@@ -185,6 +185,8 @@ impl Target {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
+    pub name: String,
+
     #[serde(rename = "target")]
     pub targets: HashMap<String, TargetConfig>,
 
@@ -506,8 +508,7 @@ fn generate_single_file(config_meta: &ConfigMeta, target: &Target, env: &minijin
 
     let file_name = file_name_template
         .render(minijinja::context! {
-            // TODO: Add name option to config
-            name => minijinja::Value::from("generated_markdown"),
+            name => minijinja::Value::from(&config.name),
         })
         .unwrap();
 
