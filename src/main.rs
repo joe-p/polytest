@@ -369,31 +369,46 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) {
 
         env.remove_template(template_name.as_str());
         env.remove_template(file_template_name.as_str());
+    } else {
+        let suite_template_name = format!("{}_suite", target_id);
+        let suite_template = target
+            .suite_template
+            .as_ref()
+            .expect("suite_template should be set by from_config");
+        env.add_template(suite_template_name.as_str(), suite_template)
+            .unwrap();
+
+        let group_template_name = format!("{}_group", target_id);
+        let group_template = target
+            .group_template
+            .as_ref()
+            .expect("group_template should be set by from_config");
+        env.add_template(group_template_name.as_str(), group_template)
+            .unwrap();
+
+        let test_template_name = format!("{}_test", target_id);
+        let test_template = target
+            .test_template
+            .as_ref()
+            .expect("test_template should be set by from_config");
+        env.add_template(test_template_name.as_str(), test_template)
+            .unwrap();
+
+        let file_template_name = format!("{}_file_name", target_id);
+        env.add_template(file_template_name.as_str(), &target.file_name_template)
+            .unwrap();
+
+        generate_multi_file(config_meta, &target, &env);
+
+        env.remove_template(suite_template_name.as_str());
+        env.remove_template(group_template_name.as_str());
+        env.remove_template(test_template_name.as_str());
+        env.remove_template(file_template_name.as_str());
     }
 }
 
-fn render_pytest(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
+fn generate_multi_file(config_meta: &ConfigMeta, target: &Target, env: &minijinja::Environment) {
     let config = &config_meta.config;
-    let target_config = config.targets.get("pytest").unwrap();
-    let out_dir = config_meta.root_dir.join(&target_config.out_dir);
-
-    env.add_template(
-        "pytest_suite",
-        include_str!("../templates/pytest/suite.py.jinja"),
-    )
-    .unwrap();
-
-    env.add_template(
-        "pytest_group",
-        include_str!("../templates/pytest/group.py.jinja"),
-    )
-    .unwrap();
-
-    env.add_template(
-        "pytest_test",
-        include_str!("../templates/pytest/test.py.jinja"),
-    )
-    .unwrap();
 
     let suite_values: Vec<Suite> = config
         .suites
@@ -401,12 +416,26 @@ fn render_pytest(config_meta: &ConfigMeta, env: &mut minijinja::Environment) {
         .map(|s| Suite::from_config(config, s))
         .collect();
 
-    let suite_template = env.get_template("pytest_suite").unwrap();
-    let group_template = env.get_template("pytest_group").unwrap();
-    let test_template = env.get_template("pytest_test").unwrap();
+    let suite_template_name = format!("{}_suite", target.id);
+    let suite_template = env.get_template(suite_template_name.as_str()).unwrap();
+
+    let group_template_name = format!("{}_group", target.id);
+    let group_template = env.get_template(group_template_name.as_str()).unwrap();
+
+    let test_template_name = format!("{}_test", target.id);
+    let test_template = env.get_template(test_template_name.as_str()).unwrap();
+
+    let file_template_name = format!("{}_file_name", target.id);
+    let file_template = env.get_template(file_template_name.as_str()).unwrap();
 
     for suite in &suite_values {
-        let suite_file = out_dir.join(format!("test_{}.py", &suite.name));
+        let suite_file_name = file_template
+            .render(minijinja::context! {
+                suite => minijinja::Value::from_serialize(suite),
+            })
+            .unwrap();
+
+        let suite_file = target.out_dir.join(suite_file_name);
 
         let mut contents = suite_template
             .render(minijinja::context! {
