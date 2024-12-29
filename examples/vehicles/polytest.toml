@@ -17,59 +17,51 @@ out_dir = "./generated/bun"
 
 # Suites are the top level of the test hierarchy and contain groups of tests
 # Each suite typically maps to a new test file in the generated test directory
-[[suite]]
-id = "motorcycle"
-groups = ["valid vehicle", "invalid vehicle", "broken vehicle"]
+[suite.motorcycle]
+groups = ["valid_vehicle", "invalid_vehicle", "broken_vehicle"]
 
-[[suite]]
-id = "car"
-groups = ["valid vehicle", "invalid vehicle", "broken vehicle"]
+[suite.car]
+groups = ["valid_vehicle", "invalid_vehicle", "broken_vehicle"]
 
 # Groups contain multiple tests
 
-[[group]]
-id = "valid vehicle"
-tests = ["valid headlights", "valid tires"] # array of test ids
+[group.valid_vehicle]
+name = "valid vehicle"
+tests = ["valid_headlights", "valid_tires"] # array of test ids
 desc = "Functionality works as expected when the vehicle is valid and not missing any parts"
 
-[[group]]
-id = "invalid vehicle"
-tests = ["extra headlight", "extra tire"]
+[group.invalid_vehicle]
+name = "invalid vehicle"
+tests = ["extra_headlight", "extra_tire"]
 desc = "Errors are thrown when the vehicle has extra parts, which should never happen"
 
-[[group]]
-id = "broken vehicle"
-tests = ["broken headlight", "flat tire"]
+[group.broken_vehicle]
+name = "broken vehicle"
+tests = ["broken_headlight", "flat_tire"]
 desc = "When the vehicle has parts that need repair, the respective functions should detect the issue"
 
 # Tests define the actual tests that will be generated
 
-[[test]]
-id = "valid headlights" 
+[test.valid_headlights]
 name = "check headlights"
 desc = "The function for checking headlights should return true if the vehicle has the correct number of headlights"
 
-[[test]]
-id = "valid tires"
+[test.valid_tires]
 name = "check tires"
 desc = "The function for checking tires should return true if the vehicle has the correct number of inflated tires"
 
-[[test]]
-id = "broken headlight"
+[test.broken_headlight]
 name = "broken headlight is caught"
 desc = "The function for checking headlights should return false if the vehicle has a broken headlight"
 
-[[test]]
-id = "flat tire"
+[test.flat_tire]
 name = "flat tire is caught"
 desc = "The function for checking tires should return false if the vehicle has a flat tire"
 
-[[test]]
-id = "extra tire"
+[test.extra_tire]
 name = "extra tire throws error"
 desc = "Having an extra tire is invalid and should throw an error"
 
-[[test]]
-id = "extra headlight"
+[test.extra_headlight]
 name = "extra headlight throws error"
 desc = "Having an extra headlight is invalid and should throw an error"

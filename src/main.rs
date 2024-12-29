@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
+use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -256,13 +257,13 @@ pub struct Config {
     pub targets: HashMap<String, TargetConfig>,
 
     #[serde(rename = "suite")]
-    pub suites: Vec<SuiteConfig>,
+    pub suites: IndexMap<String, SuiteConfig>,
 
     #[serde(rename = "group")]
-    pub groups: Vec<GroupConfig>,
+    pub groups: IndexMap<String, GroupConfig>,
 
     #[serde(rename = "test")]
-    pub tests: Vec<TestConfig>,
+    pub tests: IndexMap<String, TestConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -279,14 +280,12 @@ pub struct TargetConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct SuiteConfig {
-    pub id: String,
     pub name: Option<String>,
     pub groups: Vec<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GroupConfig {
-    pub id: String,
     pub tests: Vec<String>,
     pub name: Option<String>,
     pub desc: Option<String>,
@@ -294,7 +293,6 @@ pub struct GroupConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct TestConfig {
-    pub id: String,
     pub name: Option<String>,
     pub desc: Option<String>,
 }
@@ -306,14 +304,19 @@ pub struct Suite {
 }
 
 impl Suite {
-    pub fn from_config(config: &Config, suite_config: &SuiteConfig) -> Self {
+    pub fn from_config(config: &Config, suite_config: &SuiteConfig, suite_id: &str) -> Self {
         Self {
-            name: suite_config.name.clone().unwrap_or(suite_config.id.clone()),
+            name: suite_config.name.clone().unwrap_or(suite_id.to_string()),
             groups: config
                 .groups
                 .iter()
-                .filter(|g| suite_config.groups.contains(&g.id))
-                .map(|g| Group::from_config(config, g))
+                .filter_map(|(id, g)| {
+                    if suite_config.groups.contains(&id) {
+                        Some(Group::from_config(config, g, id))
+                    } else {
+                        None
+                    }
+                })
                 .collect(),
         }
     }
@@ -328,34 +331,26 @@ pub struct Group {
 
 impl Group {
     pub fn from_id(config: &Config, group_id: &str) -> Self {
-        let group_config = config
-            .groups
-            .iter()
-            .find(|g| g.id == group_id)
-            .expect("group should exist");
-        Self::from_config(config, group_config)
+        let group_config = config.groups.get(group_id).expect("group should exist");
+        Self::from_config(config, group_config, group_id)
     }
 
-    fn from_config(config: &Config, group_config: &GroupConfig) -> Self {
+    fn from_config(config: &Config, group_config: &GroupConfig, group_id: &str) -> Self {
         let tests: Vec<Test> = group_config
             .tests
             .iter()
             .map(|test_id| {
-                let test = config
-                    .tests
-                    .iter()
-                    .find(|t| &t.id == test_id)
-                    .expect("test should exist");
+                let test = config.tests.get(test_id).expect("test should exist");
 
                 Test {
-                    name: test.name.clone().unwrap_or(test.id.clone()),
+                    name: test.name.clone().unwrap_or(test_id.to_string()),
                     desc: test.desc.clone().unwrap_or("".to_string()),
                 }
             })
             .collect();
 
         Self {
-            name: group_config.name.clone().unwrap_or(group_config.id.clone()),
+            name: group_config.name.clone().unwrap_or(group_id.to_string()),
             tests,
             desc: group_config.desc.clone().unwrap_or("".to_string()),
         }
@@ -369,9 +364,9 @@ pub struct Test {
 }
 
 impl Test {
-    pub fn from_config(test_config: &TestConfig) -> Self {
+    pub fn from_config(test_config: &TestConfig, test_id: &str) -> Self {
         Self {
-            name: test_config.name.clone().unwrap_or(test_config.id.clone()),
+            name: test_config.name.clone().unwrap_or(test_id.to_string()),
             desc: test_config.desc.clone().unwrap_or("".to_string()),
         }
     }
@@ -457,7 +452,7 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
         .config
         .suites
         .iter()
-        .map(|s| Suite::from_config(&config_meta.config, s))
+        .map(|(id, s)| Suite::from_config(&config_meta.config, s, id))
         .collect();
 
     env.add_template(file_template_name.as_str(), &target.file_name_template)
@@ -642,7 +637,7 @@ fn generate_multi_file(
     let suite_values: Vec<Suite> = config
         .suites
         .iter()
-        .map(|s| Suite::from_config(config, s))
+        .map(|(id, s)| Suite::from_config(config, s, id))
         .collect();
 
     let suite_template_name = format!("{}_suite", target.id);
@@ -766,16 +761,20 @@ fn generate_single_file(
     let suite_values: Vec<Suite> = config
         .suites
         .iter()
-        .map(|s| Suite::from_config(config, s))
+        .map(|(id, s)| Suite::from_config(config, s, id))
         .collect();
 
     let group_values: Vec<Group> = config
         .groups
         .iter()
-        .map(|g| Group::from_config(config, g))
+        .map(|(id, g)| Group::from_config(config, g, id))
         .collect();
 
-    let test_values: Vec<Test> = config.tests.iter().map(Test::from_config).collect();
+    let test_values: Vec<Test> = config
+        .tests
+        .iter()
+        .map(|(id, t)| Test::from_config(t, id))
+        .collect();
 
     let template = env
         .get_template(format!("{}_single_file", target.id).as_str())
