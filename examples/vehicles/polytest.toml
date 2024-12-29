@@ -6,6 +6,9 @@ out_dir = "./generated/pytest"
 [target.markdown]
 out_dir = "./generated"
 
+[target.bun]
+out_dir = "./generated/bun"
+
 # Each suite, group, and test table must contain a unique identifier. These tables may also have:
 # - name: a human readable name that will be used in the generated tests (i.e. the test name in jest)
 # - desc: a description that will show up in the generated tests as a comment

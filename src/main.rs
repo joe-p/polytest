@@ -90,7 +90,7 @@ pub struct Target {
 }
 
 const DEFAULT_SINGLE_FILE_TARGETS: [&str; 1] = ["markdown"];
-const DEFAULT_MULTI_FILE_TARGETS: [&str; 1] = ["pytest"];
+const DEFAULT_MULTI_FILE_TARGETS: [&str; 2] = ["pytest", "bun"];
 
 impl Target {
     pub fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
@@ -98,7 +98,8 @@ impl Target {
             "pytest" => {
                 return Ok(Self {
                     id: id.to_string(),
-                    file_name_template: "test_{{ suite.name }}.py".to_string(),
+                    file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
+                        .to_string(),
                     out_dir: config_root.join(&config.out_dir),
                     suite_template: Some(
                         include_str!("../templates/pytest/suite.py.jinja").to_string(),
@@ -109,6 +110,22 @@ impl Target {
                     test_template: Some(
                         include_str!("../templates/pytest/test.py.jinja").to_string(),
                     ),
+                    single_file_template: None,
+                });
+            }
+            "bun" => {
+                return Ok(Self {
+                    id: id.to_string(),
+                    file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
+                        .to_string(),
+                    out_dir: config_root.join(&config.out_dir),
+                    suite_template: Some(
+                        include_str!("../templates/bun/suite.ts.jinja").to_string(),
+                    ),
+                    group_template: Some(
+                        include_str!("../templates/bun/group.ts.jinja").to_string(),
+                    ),
+                    test_template: Some(include_str!("../templates/bun/test.ts.jinja").to_string()),
                     single_file_template: None,
                 });
             }
@@ -370,9 +387,11 @@ fn main() -> Result<()> {
 
     match parsed.command {
         Commands::Generate(generate) => {
-            let targets = generate
-                .target
-                .unwrap_or(vec!["pytest".to_string(), "markdown".to_string()]);
+            let targets = generate.target.unwrap_or(vec![
+                "pytest".to_string(),
+                "markdown".to_string(),
+                "bun".to_string(),
+            ]);
 
             for target in targets {
                 generate_target(&config_meta, &target)?;
@@ -538,9 +557,17 @@ fn generate_multi_file(
             }
         }
 
+        if let Some(parent) = suite_file.parent() {
+            std::fs::create_dir_all(parent).context(format!(
+                "failed to create directory for {}",
+                parent.display()
+            ))?;
+        }
+
         std::fs::write(&suite_file, contents).context(format!(
             "failed to write suite file {} for {}",
-            &suite_file_name, target.id
+            &suite_file.display(),
+            target.id
         ))?;
     }
 
