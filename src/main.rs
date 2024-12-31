@@ -14,10 +14,6 @@ fn get_group_comment(group: &str) -> String {
     format!("{} {}", GROUP_COMMENT, group)
 }
 
-fn get_suite_comment(suite: &str) -> String {
-    format!("{} {}", SUITE_COMMENT, suite)
-}
-
 fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
     match original.find(keyword) {
         Some(pos) => {
@@ -92,11 +88,8 @@ pub struct Target {
     suite_template: Option<String>,
     group_template: Option<String>,
     test_template: Option<String>,
-    single_file_template: Option<String>,
+    plan_template: Option<String>,
 }
-
-const DEFAULT_SINGLE_FILE_TARGETS: [&str; 1] = ["markdown"];
-const DEFAULT_MULTI_FILE_TARGETS: [&str; 2] = ["pytest", "bun"];
 
 impl Target {
     pub fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
@@ -117,7 +110,7 @@ impl Target {
                     test_template: Some(
                         include_str!("../templates/pytest/test.py.jinja").to_string(),
                     ),
-                    single_file_template: None,
+                    plan_template: None,
                 });
             }
             "bun" => {
@@ -134,7 +127,7 @@ impl Target {
                         include_str!("../templates/bun/group.ts.jinja").to_string(),
                     ),
                     test_template: Some(include_str!("../templates/bun/test.ts.jinja").to_string()),
-                    single_file_template: None,
+                    plan_template: None,
                 });
             }
             "markdown" => {
@@ -146,8 +139,8 @@ impl Target {
                     suite_template: None,
                     group_template: None,
                     test_template: None,
-                    single_file_template: Some(
-                        include_str!("../templates/markdown/single_file.md.jinja").to_string(),
+                    plan_template: Some(
+                        include_str!("../templates/markdown/plan.md.jinja").to_string(),
                     ),
                 });
             }
@@ -178,16 +171,11 @@ impl Target {
             suite_template: None,
             group_template: None,
             test_template: None,
-            single_file_template: None,
+            plan_template: None,
         };
 
         let mut loaded_suite = false;
         if let Some(suite_template_path) = &config.suite_template_path {
-            if DEFAULT_SINGLE_FILE_TARGETS.contains(&id) {
-                return Err(anyhow!(
-                    "Suite template path provided for single file target"
-                ));
-            }
             target.suite_template = Some(
                 std::fs::read_to_string(suite_template_path)
                     .context(format!("failed to read suite template file for {}", id))?,
@@ -221,28 +209,15 @@ impl Target {
             );
         }
 
-        if let Some(single_file_template_path) = &config.single_file_template_path {
-            if DEFAULT_MULTI_FILE_TARGETS.contains(&id) {
-                return Err(anyhow!(
-                    "Single file template path provided for multi file target"
-                ));
-            }
-
-            if loaded_suite {
-                return Err(anyhow!(
-                    "Cannot provide single file template path with suite template path"
-                ));
-            }
-            target.single_file_template = Some(
-                std::fs::read_to_string(single_file_template_path).context(format!(
-                    "failed to read single file template file for {}",
-                    id
-                ))?,
+        if let Some(plan_template_path) = &config.plan_template_path {
+            target.plan_template = Some(
+                std::fs::read_to_string(plan_template_path)
+                    .context(format!("failed to read plan template file for {}", id))?,
             );
         }
 
-        if target.suite_template.is_none() && target.single_file_template.is_none() {
-            return Err(anyhow!("No suite or single file template provided"));
+        if target.suite_template.is_none() && target.plan_template.is_none() {
+            return Err(anyhow!("No suite or plan template provided"));
         }
 
         Ok(target)
@@ -275,7 +250,7 @@ pub struct TargetConfig {
     suite_template_path: Option<PathBuf>,
     group_template_path: Option<PathBuf>,
     test_template_path: Option<PathBuf>,
-    single_file_template_path: Option<PathBuf>,
+    plan_template_path: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -588,32 +563,28 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
 
     let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
-    if let Some(single_file_template) = &target.single_file_template {
-        let template_name = format!("{}_single_file", target_id);
-        env.add_template(template_name.as_str(), single_file_template)
-            .context(format!(
-                "failed to add template for {} single file",
-                target_id
-            ))?;
+    // Define these here to avoid lifetime issues with env
+    let template_name = format!("{}_plan", target_id);
+    let file_template_name = format!("{}_file_name", target_id);
+    let suite_template_name = format!("{}_suite", target_id);
 
-        let file_template_name = format!("{}_file_name", target_id);
+    if let Some(plan_template) = &target.plan_template {
+        env.add_template(&template_name, plan_template)
+            .context(format!("failed to add template for {} plan", target_id))?;
+
         env.add_template(file_template_name.as_str(), &target.file_name_template)
             .context(format!(
                 "failed to add template for {} file name",
                 target_id
             ))?;
 
-        generate_single_file(config_meta, &target, &env)?;
+        generate_plan(config_meta, &target, &env)?;
 
-        env.remove_template(template_name.as_str());
-        env.remove_template(file_template_name.as_str());
-        Ok(())
-    } else {
-        let suite_template_name = format!("{}_suite", target_id);
-        let suite_template = target
-            .suite_template
-            .as_ref()
-            .expect("suite_template should be set by from_config");
+        env.remove_template(&template_name);
+        env.remove_template(&file_template_name);
+    }
+
+    if let Some(suite_template) = &target.suite_template {
         env.add_template(suite_template_name.as_str(), suite_template)
             .context(format!("failed to add template for {} suite", target_id))?;
 
@@ -650,17 +621,18 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
             target_id
         ))?;
 
-        generate_multi_file(config_meta, &target, &env)?;
+        generate_suite(config_meta, &target, &env)?;
 
         env.remove_template(suite_template_name.as_str());
         env.remove_template(group_template_name.as_str());
         env.remove_template(test_template_name.as_str());
         env.remove_template(file_template_name.as_str());
-        Ok(())
     }
+
+    Ok(())
 }
 
-fn generate_multi_file(
+fn generate_suite(
     config_meta: &ConfigMeta,
     target: &Target,
     env: &minijinja::Environment,
@@ -794,7 +766,7 @@ fn generate_multi_file(
     Ok(())
 }
 
-fn generate_single_file(
+fn generate_plan(
     config_meta: &ConfigMeta,
     target: &Target,
     env: &minijinja::Environment,
@@ -819,8 +791,8 @@ fn generate_single_file(
         .collect();
 
     let template = env
-        .get_template(format!("{}_single_file", target.id).as_str())
-        .expect("single file template should have been adedd by generate_target");
+        .get_template(format!("{}_plan", target.id).as_str())
+        .expect("plan template should have been adedd by generate_target");
 
     let content = template
         .render(minijinja::context! {
@@ -828,7 +800,7 @@ fn generate_single_file(
             groups => minijinja::Value::from_serialize(&group_values),
             tests => minijinja::Value::from_serialize(&test_values)
         })
-        .context(format!("failed to render single file for {}", target.id))?;
+        .context(format!("failed to render plan for {}", target.id))?;
 
     let file_name_template = env
         .get_template(format!("{}_file_name", target.id).as_str())
@@ -842,7 +814,7 @@ fn generate_single_file(
 
     let file_path = target.out_dir.join(file_name);
     std::fs::write(file_path, content)
-        .context(format!("failed to write single file for {}", target.id))?;
+        .context(format!("failed to write plan for {}", target.id))?;
 
     Ok(())
 }
