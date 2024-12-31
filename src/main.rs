@@ -524,6 +524,29 @@ fn get_groups(input: &str) -> Vec<String> {
     groups
 }
 
+fn find_suite(input: &str, name: &str) -> Result<bool> {
+    let re = Regex::new(format!(r"{} {}", SUITE_COMMENT, name).as_str()).unwrap();
+    Ok(re.is_match(input))
+}
+
+/// Gets the chunk of the input that starts with the suite comment and ends with
+/// the next suite comment (or the end of the file)
+fn get_suite_chunk(input: &str, name: &str) -> Result<String> {
+    let start_re = Regex::new(format!(r"{} {}", SUITE_COMMENT, name).as_str()).unwrap();
+    let start = start_re.find(input).unwrap().end();
+
+    let end_chunk = input[start..].to_string();
+
+    let end_re = Regex::new(SUITE_COMMENT).unwrap();
+    let end = start
+        + end_re
+            .find(&end_chunk)
+            .map(|m| m.start())
+            .unwrap_or(end_chunk.len());
+
+    Ok(input[start..end].to_string())
+}
+
 fn find_test(
     input: &str,
     target: &Target,
@@ -669,7 +692,7 @@ fn generate_multi_file(
 
         let suite_file = target.out_dir.join(&suite_file_name);
 
-        let mut contents: String;
+        let mut contents: String = String::new();
 
         if suite_file.exists() {
             println!("{} exists, reading content...", suite_file.display());
@@ -677,17 +700,22 @@ fn generate_multi_file(
                 "failed to read existing suite file for {}",
                 target.id
             ))?;
-        } else {
-            contents = suite_template
-                .render(minijinja::context! {
-                    suite => minijinja::Value::from_serialize(suite),
-                })
-                .context(format!("failed to render suite for {}", target.id))?;
         }
 
-        let suite_comment = get_suite_comment(&suite.name);
+        if !find_suite(&contents, &suite.name)? {
+            contents.insert_str(
+                contents.len(),
+                &suite_template
+                    .render(minijinja::context! {
+                        suite => minijinja::Value::from_serialize(suite),
+                    })
+                    .context(format!("failed to render suite for {}", target.id))?,
+            );
+        }
 
-        let existing_groups = get_groups(&contents);
+        let mut suite_chunk = get_suite_chunk(&contents, &suite.name)?;
+
+        let existing_groups = get_groups(&suite_chunk);
 
         let missing_groups: Vec<&Group> = suite
             .groups
@@ -705,12 +733,13 @@ fn generate_multi_file(
                     group.name, target.id
                 ))?;
 
-            contents = insert_after_keyword(&contents, &rendered_group, &suite_comment);
+            suite_chunk.insert_str(0, &rendered_group);
         }
 
         for group in &suite.groups {
             for test in &group.tests {
-                if find_test(&contents, target, &test.name, env)? {
+                // We don't need to get a group-specific chunk because two groups can't have the same test
+                if find_test(&suite_chunk, target, &test.name, env)? {
                     println!(
                         "test \"{}\" already exists in {}. Skipping...",
                         test.name,
@@ -731,9 +760,11 @@ fn generate_multi_file(
 
                 let group_comment = get_group_comment(&group.name);
 
-                contents = insert_after_keyword(&contents, &rendered_test, &group_comment);
+                suite_chunk = insert_after_keyword(&suite_chunk, &rendered_test, &group_comment);
             }
         }
+
+        contents = insert_after_keyword(&contents, &suite_chunk, &get_suite_comment(&suite.name));
 
         if let Some(parent) = suite_file.parent() {
             std::fs::create_dir_all(parent).context(format!(
