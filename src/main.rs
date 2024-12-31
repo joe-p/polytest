@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
+use glob::glob;
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -93,6 +94,14 @@ pub struct Target {
     plan_template: Option<String>,
 }
 
+fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBuf> {
+    let pattern = template_dir.join(template_name).to_path_buf();
+    glob(pattern.to_str().unwrap())?
+        .next()
+        .ok_or_else(|| anyhow!("No template file found matching: {} ", pattern.display()))
+        .and_then(|path| path.map_err(|e| e.into()))
+}
+
 impl Target {
     pub fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
         match id {
@@ -172,44 +181,36 @@ impl Target {
             plan_template: None,
         };
 
-        let mut loaded_suite = false;
-        if let Some(suite_template_path) = &config.suite_template {
-            target.suite_template = Some(
-                std::fs::read_to_string(suite_template_path)
-                    .context(format!("failed to read suite template file for {}", id))?,
-            );
-            loaded_suite = true;
-        }
+        let template_dir = &config_root.join(
+            config
+                .template_dir
+                .as_ref()
+                .ok_or(anyhow!("Template directory is required for custom targets"))?,
+        );
 
-        let mut loaded_group = false;
-        if let Some(group_template_path) = &config.group_template {
-            if !loaded_suite {
-                return Err(anyhow!(
-                    "Group template path provided without suite template path"
-                ));
-            }
+        if let Ok(suite_file) = find_template_file(template_dir, "suite*") {
+            target.suite_template = Some(
+                std::fs::read_to_string(suite_file)
+                    .context(format!("failed to read suite template file for {}", id,))?,
+            );
+
+            let group_file = find_template_file(template_dir, "group*")?;
             target.group_template = Some(
-                std::fs::read_to_string(group_template_path)
+                std::fs::read_to_string(group_file)
                     .context(format!("failed to read group template file for {}", id))?,
             );
-            loaded_group = true;
-        }
 
-        if let Some(test_template_path) = &config.test_template {
-            if !loaded_group {
-                return Err(anyhow!(
-                    "Test template path provided without group template path"
-                ));
-            }
+            let test_file = find_template_file(template_dir, "test*")?;
+
             target.test_template = Some(
-                std::fs::read_to_string(test_template_path)
+                std::fs::read_to_string(test_file)
                     .context(format!("failed to read test template file for {}", id))?,
             );
         }
 
-        if let Some(plan_template_path) = &config.plan_template {
+        if let Ok(plan_file) = find_template_file(template_dir, "plan*") {
             target.plan_template = Some(
-                std::fs::read_to_string(plan_template_path)
+                std::fs::read_to_string(plan_file)
                     .context(format!("failed to read plan template file for {}", id))?,
             );
         }
@@ -246,10 +247,7 @@ pub struct TargetConfig {
     test_regex_template: Option<String>,
     suite_file_name_template: Option<String>,
     plan_file_name_template: Option<String>,
-    suite_template: Option<PathBuf>,
-    group_template: Option<PathBuf>,
-    test_template: Option<PathBuf>,
-    plan_template: Option<PathBuf>,
+    template_dir: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
