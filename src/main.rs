@@ -55,19 +55,19 @@ fn case_from_str(s: &str) -> Result<Case> {
     }
 }
 
-pub fn convert_case_filter(input: &str, case: &str) -> String {
+fn convert_case_filter(input: &str, case: &str) -> String {
     input.to_case(case_from_str(case).unwrap_or_else(|e| {
         panic!("failed to convert case: {}", e);
     }))
 }
 
-pub struct ConfigMeta {
+struct ConfigMeta {
     root_dir: PathBuf,
     config: Config,
 }
 
 impl ConfigMeta {
-    pub fn from_file(path: &str) -> Result<Self> {
+    fn from_file(path: &str) -> Result<Self> {
         let contents = std::fs::read_to_string(path).context("failed to read config file")?;
         let config = toml::from_str(&contents).context("failed to parse config file")?;
         Ok(Self {
@@ -80,7 +80,7 @@ impl ConfigMeta {
     }
 }
 
-pub struct Target {
+struct Target {
     id: String,
     out_dir: PathBuf,
     test_regex_template: Option<String>,
@@ -103,7 +103,7 @@ fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBu
 }
 
 impl Target {
-    pub fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
+    fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
         match id {
             "pytest" => {
                 return Ok(Self {
@@ -224,24 +224,24 @@ impl Target {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct Config {
-    pub name: String,
+struct Config {
+    name: String,
 
     #[serde(rename = "target")]
-    pub targets: HashMap<String, TargetConfig>,
+    targets: HashMap<String, TargetConfig>,
 
     #[serde(rename = "suite")]
-    pub suites: IndexMap<String, SuiteConfig>,
+    suites: IndexMap<String, SuiteConfig>,
 
     #[serde(rename = "group")]
-    pub groups: IndexMap<String, GroupConfig>,
+    groups: IndexMap<String, GroupConfig>,
 
     #[serde(rename = "test")]
-    pub tests: IndexMap<String, TestConfig>,
+    tests: IndexMap<String, TestConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct TargetConfig {
+struct TargetConfig {
     out_dir: PathBuf,
 
     test_regex_template: Option<String>,
@@ -251,29 +251,29 @@ pub struct TargetConfig {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct SuiteConfig {
-    pub groups: Vec<String>,
+struct SuiteConfig {
+    groups: Vec<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct GroupConfig {
-    pub desc: Option<String>,
+struct GroupConfig {
+    desc: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct TestConfig {
-    pub desc: Option<String>,
-    pub group: String,
+struct TestConfig {
+    desc: Option<String>,
+    group: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct Suite {
-    pub name: String,
-    pub groups: Vec<Group>,
+struct Suite {
+    name: String,
+    groups: Vec<Group>,
 }
 
 impl Suite {
-    pub fn from_config(config: &Config, suite_config: &SuiteConfig, suite_id: &str) -> Self {
+    fn from_config(config: &Config, suite_config: &SuiteConfig, suite_id: &str) -> Self {
         Self {
             name: suite_id.to_string(),
             groups: config
@@ -292,18 +292,13 @@ impl Suite {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Group {
-    pub name: String,
-    pub tests: Vec<Test>,
-    pub desc: String,
+struct Group {
+    name: String,
+    tests: Vec<Test>,
+    desc: String,
 }
 
 impl Group {
-    pub fn from_id(config: &Config, group_id: &str) -> Self {
-        let group_config = config.groups.get(group_id).expect("group should exist");
-        Self::from_config(config, group_config, group_id)
-    }
-
     fn from_config(config: &Config, group_config: &GroupConfig, group_id: &str) -> Self {
         let tests: Vec<Test> = config
             .tests
@@ -324,13 +319,13 @@ impl Group {
 }
 
 #[derive(Debug, Serialize)]
-pub struct Test {
-    pub name: String,
-    pub desc: String,
+struct Test {
+    name: String,
+    desc: String,
 }
 
 impl Test {
-    pub fn from_config(test_config: &TestConfig, test_id: &str) -> Self {
+    fn from_config(test_config: &TestConfig, test_id: &str) -> Self {
         Self {
             name: test_id.to_string(),
             desc: test_config.desc.clone().unwrap_or("".to_string()),
