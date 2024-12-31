@@ -82,8 +82,10 @@ impl ConfigMeta {
 pub struct Target {
     id: String,
     out_dir: PathBuf,
-    file_name_template: String,
-    test_regex_template: String,
+    test_regex_template: Option<String>,
+
+    suite_file_name_template: Option<String>,
+    plan_file_name_template: Option<String>,
 
     suite_template: Option<String>,
     group_template: Option<String>,
@@ -97,9 +99,13 @@ impl Target {
             "pytest" => {
                 return Ok(Self {
                     id: id.to_string(),
-                    test_regex_template: "def test_{{ name | convert_case('Snake') }}".to_string(),
-                    file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
-                        .to_string(),
+                    test_regex_template: Some(
+                        "def test_{{ name | convert_case('Snake') }}".to_string(),
+                    ),
+                    plan_file_name_template: None,
+                    suite_file_name_template: Some(
+                        "test_{{ suite.name | convert_case('Snake') }}.py".to_string(),
+                    ),
                     out_dir: config_root.join(&config.out_dir),
                     suite_template: Some(
                         include_str!("../templates/pytest/suite.py.jinja").to_string(),
@@ -116,9 +122,11 @@ impl Target {
             "bun" => {
                 return Ok(Self {
                     id: id.to_string(),
-                    test_regex_template: "test\\(\"{{ name }}".to_string(),
-                    file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
-                        .to_string(),
+                    test_regex_template: Some("test\\(\"{{ name }}".to_string()),
+                    plan_file_name_template: None,
+                    suite_file_name_template: Some(
+                        "{{ suite.name | convert_case('Snake') }}.test.ts".to_string(),
+                    ),
                     out_dir: config_root.join(&config.out_dir),
                     suite_template: Some(
                         include_str!("../templates/bun/suite.ts.jinja").to_string(),
@@ -133,8 +141,11 @@ impl Target {
             "markdown" => {
                 return Ok(Self {
                     id: id.to_string(),
-                    test_regex_template: String::new(),
-                    file_name_template: "{{ name | convert_case('Snake') }}.md".to_string(),
+                    test_regex_template: None,
+                    plan_file_name_template: Some(
+                        "{{ name | convert_case('Snake') }}.md".to_string(),
+                    ),
+                    suite_file_name_template: None,
                     out_dir: config_root.join(&config.out_dir),
                     suite_template: None,
                     group_template: None,
@@ -151,23 +162,10 @@ impl Target {
 
         let mut target = Self {
             id: id.to_string(),
-            test_regex_template: config
-                .test_regex_template
-                .as_ref()
-                .ok_or(anyhow!(
-                    "test_regex_template option is missing for target {}",
-                    id
-                ))?
-                .to_string(),
+            test_regex_template: config.test_regex_template.to_owned(),
             out_dir: config_root.join(&config.out_dir),
-            file_name_template: config
-                .file_name_template
-                .as_ref()
-                .ok_or(anyhow!(
-                    "file_name_template option is missing for target {}",
-                    id
-                ))?
-                .to_string(),
+            suite_file_name_template: config.suite_file_name_template.clone(),
+            plan_file_name_template: config.plan_file_name_template.clone(),
             suite_template: None,
             group_template: None,
             test_template: None,
@@ -175,7 +173,7 @@ impl Target {
         };
 
         let mut loaded_suite = false;
-        if let Some(suite_template_path) = &config.suite_template_path {
+        if let Some(suite_template_path) = &config.suite_template {
             target.suite_template = Some(
                 std::fs::read_to_string(suite_template_path)
                     .context(format!("failed to read suite template file for {}", id))?,
@@ -184,7 +182,7 @@ impl Target {
         }
 
         let mut loaded_group = false;
-        if let Some(group_template_path) = &config.group_template_path {
+        if let Some(group_template_path) = &config.group_template {
             if !loaded_suite {
                 return Err(anyhow!(
                     "Group template path provided without suite template path"
@@ -197,7 +195,7 @@ impl Target {
             loaded_group = true;
         }
 
-        if let Some(test_template_path) = &config.test_template_path {
+        if let Some(test_template_path) = &config.test_template {
             if !loaded_group {
                 return Err(anyhow!(
                     "Test template path provided without group template path"
@@ -209,7 +207,7 @@ impl Target {
             );
         }
 
-        if let Some(plan_template_path) = &config.plan_template_path {
+        if let Some(plan_template_path) = &config.plan_template {
             target.plan_template = Some(
                 std::fs::read_to_string(plan_template_path)
                     .context(format!("failed to read plan template file for {}", id))?,
@@ -246,11 +244,12 @@ pub struct TargetConfig {
     out_dir: PathBuf,
 
     test_regex_template: Option<String>,
-    file_name_template: Option<String>,
-    suite_template_path: Option<PathBuf>,
-    group_template_path: Option<PathBuf>,
-    test_template_path: Option<PathBuf>,
-    plan_template_path: Option<PathBuf>,
+    suite_file_name_template: Option<String>,
+    plan_file_name_template: Option<String>,
+    suite_template: Option<PathBuf>,
+    group_template: Option<PathBuf>,
+    test_template: Option<PathBuf>,
+    plan_template: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -374,15 +373,13 @@ struct Validate {
 
 fn main() -> Result<()> {
     let parsed = Cli::parse();
-    let config_meta = ConfigMeta::from_file("examples/vehicles/polytest.toml")?;
+    let config_meta = ConfigMeta::from_file("polytest.toml")?;
 
     match parsed.command {
         Commands::Generate(generate) => {
-            let targets = generate.target.unwrap_or(vec![
-                "pytest".to_string(),
-                "markdown".to_string(),
-                "bun".to_string(),
-            ]);
+            let targets = generate
+                .target
+                .unwrap_or(config_meta.config.targets.keys().cloned().collect());
 
             for target in targets {
                 generate_target(&config_meta, &target)?;
@@ -411,7 +408,7 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
 
     let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
-    let file_template_name = format!("{}_file_name", target.id);
+    let file_template_name = format!("{}_suite_file_name", target.id);
     let mut env = minijinja::Environment::new();
     env.add_filter("convert_case", convert_case_filter);
     env.set_lstrip_blocks(true);
@@ -424,21 +421,25 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
         .map(|(id, s)| Suite::from_config(&config_meta.config, s, id))
         .collect();
 
-    env.add_template(file_template_name.as_str(), &target.file_name_template)
+    let source = &target.suite_file_name_template.as_ref().ok_or(anyhow!(
+        "suite_file_name_template option is missing for target {}",
+        target.id
+    ))?;
+
+    env.add_template(file_template_name.as_str(), source)
         .context(format!(
             "failed to add template for {} file name",
             target.id
         ))?;
 
     let test_regex_template_name = format!("{}_test_regex", target.id);
-    env.add_template(
-        test_regex_template_name.as_str(),
-        &target.test_regex_template,
-    )
-    .context(format!(
-        "failed to add template for {} test regex",
-        target.id
-    ))?;
+    if let Some(test_regex_template) = &target.test_regex_template {
+        env.add_template(test_regex_template_name.as_str(), test_regex_template)
+            .context(format!(
+                "failed to add template for {} test regex",
+                target.id
+            ))?;
+    }
 
     let file_template = env
         .get_template(file_template_name.as_str())
@@ -558,15 +559,21 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
     let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
     // Define these here to avoid lifetime issues with env
-    let template_name = format!("{}_plan", target_id);
-    let file_template_name = format!("{}_file_name", target_id);
+    let plan_template_name = format!("{}_plan", target_id);
+    let plan_file_template_name = format!("{}_plan_file_name", target_id);
+    let suite_file_template_name = format!("{}_suite_file_name", target_id);
     let suite_template_name = format!("{}_suite", target_id);
 
     if let Some(plan_template) = &target.plan_template {
-        env.add_template(&template_name, plan_template)
+        env.add_template(&plan_template_name, plan_template)
             .context(format!("failed to add template for {} plan", target_id))?;
 
-        env.add_template(file_template_name.as_str(), &target.file_name_template)
+        let source = &target.plan_file_name_template.as_ref().ok_or(anyhow!(
+            "plan_file_name_template option is missing for target {}",
+            target.id
+        ))?;
+
+        env.add_template(plan_file_template_name.as_str(), source)
             .context(format!(
                 "failed to add template for {} file name",
                 target_id
@@ -574,8 +581,8 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
 
         generate_plan(config_meta, &target, &env)?;
 
-        env.remove_template(&template_name);
-        env.remove_template(&file_template_name);
+        env.remove_template(&plan_template_name);
+        env.remove_template(&plan_file_template_name);
     }
 
     if let Some(suite_template) = &target.suite_template {
@@ -598,29 +605,33 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
         env.add_template(test_template_name.as_str(), test_template)
             .context(format!("failed to add template for {} test", target_id))?;
 
-        let file_template_name = format!("{}_file_name", target_id);
-        env.add_template(file_template_name.as_str(), &target.file_name_template)
+        let source = &target.suite_file_name_template.as_ref().ok_or(anyhow!(
+            "suite_file_name_template option is missing for target {}",
+            target.id
+        ))?;
+
+        env.add_template(suite_file_template_name.as_str(), source)
             .context(format!(
                 "failed to add template for {} file name",
                 target_id
             ))?;
 
         let test_regex_template_name = format!("{}_test_regex", target_id);
-        env.add_template(
-            test_regex_template_name.as_str(),
-            &target.test_regex_template,
-        )
-        .context(format!(
-            "failed to add template for {} test regex",
-            target_id
-        ))?;
+
+        if let Some(test_regex_template) = &target.test_regex_template {
+            env.add_template(test_regex_template_name.as_str(), test_regex_template)
+                .context(format!(
+                    "failed to add template for {} test regex",
+                    target_id
+                ))?;
+        }
 
         generate_suite(config_meta, &target, &env)?;
 
         env.remove_template(suite_template_name.as_str());
         env.remove_template(group_template_name.as_str());
         env.remove_template(test_template_name.as_str());
-        env.remove_template(file_template_name.as_str());
+        env.remove_template(suite_file_template_name.as_str());
     }
 
     Ok(())
@@ -654,7 +665,7 @@ fn generate_suite(
         .get_template(test_template_name.as_str())
         .expect("test template should have been adedd by generate_target");
 
-    let file_template_name = format!("{}_file_name", target.id);
+    let file_template_name = format!("{}_suite_file_name", target.id);
     let file_template = env
         .get_template(file_template_name.as_str())
         .expect("file template should have been adedd by generate_target");
@@ -797,7 +808,7 @@ fn generate_plan(
         .context(format!("failed to render plan for {}", target.id))?;
 
     let file_name_template = env
-        .get_template(format!("{}_file_name", target.id).as_str())
+        .get_template(format!("{}_plan_file_name", target.id).as_str())
         .expect("file name template should have been adedd by generate_target");
 
     let file_name = file_name_template

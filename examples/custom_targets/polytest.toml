@@ -1,0 +1,62 @@
+name = "custom targets example"
+
+# The default pytest target
+[target.pytest]
+out_dir = "./generated/pytest"
+
+################
+# Custom targets
+################
+
+# This is a custom target that generates a CSV file with all the test cases in the plan
+[target.test_cases_csv]
+out_dir = "./generated"
+
+# A Jinja template string for the name of the file that is generated
+plan_file_name_template = "{{ name | convert_case('Snake') }}_test_cases.csv"
+
+# Path to a Jinja template file for the content of the file that is generated
+plan_template = "./templates/test_cases_csv/plan.csv.jinja"
+
+#########################################
+# The suite, groups, and test definitions
+#########################################
+
+[suite.motorcycle]
+groups = ["valid vehicle", "invalid vehicle", "broken vehicle"]
+
+[suite.car]
+groups = ["valid vehicle", "invalid vehicle", "broken vehicle"]
+
+[group."valid vehicle"]
+desc = "Functionality works as expected when the vehicle is valid and not missing any parts"
+
+[group."invalid vehicle"]
+desc = "Errors are thrown when the vehicle has extra parts, which should never happen"
+
+[group."broken vehicle"]
+desc = "When the vehicle has parts that need repair, the respective functions should detect the issue"
+
+[test."check headlights"]
+group = "valid vehicle"
+desc = "The function for checking headlights should return true if the vehicle has the correct number of headlights"
+
+[test."check tires"]
+group = "valid vehicle"
+desc = "The function for checking tires should return true if the vehicle has the correct number of inflated tires"
+
+[test."broken headlight is caught"]
+group = "broken vehicle"
+desc = "The function for checking headlights should return false if the vehicle has a broken headlight"
+
+[test."flat tire is caught"]
+group = "broken vehicle"
+desc = "The function for checking tires should return false if the vehicle has a flat tire"
+
+[test."extra tire throws error"]
+group = "invalid vehicle"
+desc = "Having an extra tire is invalid and should throw an error"
+
+[test."extra headlight throws error"]
+group = "invalid vehicle"
+desc = "Having an extra headlight is invalid and should throw an error"
