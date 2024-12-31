@@ -529,9 +529,15 @@ fn find_suite(input: &str, name: &str) -> Result<bool> {
     Ok(re.is_match(input))
 }
 
+struct SuiteChunk {
+    content: String,
+    start: usize,
+    end: usize,
+}
+
 /// Gets the chunk of the input that starts with the suite comment and ends with
 /// the next suite comment (or the end of the file)
-fn get_suite_chunk(input: &str, name: &str) -> Result<String> {
+fn get_suite_chunk(input: &str, name: &str) -> Result<SuiteChunk> {
     let start_re = Regex::new(format!(r"{} {}", SUITE_COMMENT, name).as_str()).unwrap();
     let start = start_re.find(input).unwrap().end();
 
@@ -544,7 +550,11 @@ fn get_suite_chunk(input: &str, name: &str) -> Result<String> {
             .map(|m| m.start())
             .unwrap_or(end_chunk.len());
 
-    Ok(input[start..end].to_string())
+    Ok(SuiteChunk {
+        content: input[start..end].to_string(),
+        start,
+        end,
+    })
 }
 
 fn find_test(
@@ -715,7 +725,7 @@ fn generate_multi_file(
 
         let mut suite_chunk = get_suite_chunk(&contents, &suite.name)?;
 
-        let existing_groups = get_groups(&suite_chunk);
+        let existing_groups = get_groups(&suite_chunk.content);
 
         let missing_groups: Vec<&Group> = suite
             .groups
@@ -733,13 +743,13 @@ fn generate_multi_file(
                     group.name, target.id
                 ))?;
 
-            suite_chunk.insert_str(0, &rendered_group);
+            suite_chunk.content.insert_str(0, &rendered_group);
         }
 
         for group in &suite.groups {
             for test in &group.tests {
                 // We don't need to get a group-specific chunk because two groups can't have the same test
-                if find_test(&suite_chunk, target, &test.name, env)? {
+                if find_test(&suite_chunk.content, target, &test.name, env)? {
                     println!(
                         "test \"{}\" already exists in {}. Skipping...",
                         test.name,
@@ -760,11 +770,12 @@ fn generate_multi_file(
 
                 let group_comment = get_group_comment(&group.name);
 
-                suite_chunk = insert_after_keyword(&suite_chunk, &rendered_test, &group_comment);
+                suite_chunk.content =
+                    insert_after_keyword(&suite_chunk.content, &rendered_test, &group_comment);
             }
         }
 
-        contents = insert_after_keyword(&contents, &suite_chunk, &get_suite_comment(&suite.name));
+        contents.replace_range(suite_chunk.start..suite_chunk.end, &suite_chunk.content);
 
         if let Some(parent) = suite_file.parent() {
             std::fs::create_dir_all(parent).context(format!(
