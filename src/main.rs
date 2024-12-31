@@ -439,6 +439,10 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
             ))?;
     }
 
+    let test_regex_template = env
+        .get_template(&test_regex_template_name)
+        .expect("template should exist since it was just added above");
+
     let file_template = env
         .get_template(file_template_name.as_str())
         .context(format!("failed to get file template for {}", target.id))?;
@@ -463,6 +467,20 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
             target.id
         ))?;
 
+        let suite_chunk = get_suite_chunk(&contents, &suite.name)?;
+        let all_tests_regex = test_regex_template
+            .render(minijinja::context! {
+                name => minijinja::Value::from(".*"),
+            })
+            .context(format!("failed to render test regex for {}", target.id))?;
+
+        let all_tests_regex = Regex::new(&all_tests_regex).unwrap();
+
+        let mut remaining_tests: Vec<String> = all_tests_regex
+            .find_iter(&suite_chunk.content)
+            .map(|m| m.as_str().to_string())
+            .collect();
+
         for group in &suite.groups {
             for test in &group.tests {
                 if !find_test(&contents, &target, &test.name, &env)? {
@@ -472,12 +490,33 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
                         suite_file.display()
                     ));
                 } else {
+                    let test_regex = test_regex_template
+                        .render(minijinja::context! {
+                            name => minijinja::Value::from(&test.name),
+                        })
+                        .context(format!("failed to render test regex for {}", target.id))?;
+
+                    let test_regex = Regex::new(&test_regex).unwrap();
+
+                    remaining_tests = remaining_tests
+                        .iter()
+                        .filter(|t| !test_regex.is_match(t))
+                        .cloned()
+                        .collect();
+
                     println!("test \"{}\" exists in {}", test.name, suite_file.display());
                 }
             }
         }
 
-        // TODO: Check if there are tests implemented that are not in the suite
+        if !remaining_tests.is_empty() {
+            return Err(anyhow!(
+                "found test implementation(s) in \"{}\" suite in {} that were not defined in the test plan\n{}",
+                suite.name,
+                suite_file.display(),
+                remaining_tests.join("\n")
+            ));
+        }
     }
 
     Ok(())
