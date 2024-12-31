@@ -16,66 +16,55 @@ out_dir = "./generated"
 [target.bun]
 out_dir = "./generated/bun"
 
-# Each suite, group, and test are defined in a table with a unique identifier. 
-# The identifier should be fairly short and easy to read/write within this file.
+# Each suite, group, and test are defined in a table with a unique name.
+# The name is used to generate and validate the tests, so it should not be changed.
 #
 # These tables may also have the following fields:
-# - name: a human readable name that will be used in the generated tests (i.e. the test name in jest)
 # - desc: a description that will show up in the generated tests as a comment
 #
-# If a name is not provided, the identifier will be used as the name
 # If a desc is not provided, it will be an empty string
 
 # Suites are the top level of the test hierarchy and contain groups of tests
 # Each suite typically maps to a new test file in the generated test directory
 [suite.motorcycle]
-groups = ["valid_vehicle", "invalid_vehicle", "broken_vehicle"]
+groups = ["valid vehicle", "invalid vehicle", "broken vehicle"]
 
 [suite.car]
-groups = ["valid_vehicle", "invalid_vehicle", "broken_vehicle"]
+groups = ["valid vehicle", "invalid vehicle", "broken vehicle"]
 
 # Groups contain multiple tests
 
-[group.valid_vehicle]
-name = "valid vehicle"
+[group."valid vehicle"]
 desc = "Functionality works as expected when the vehicle is valid and not missing any parts"
 
-[group.invalid_vehicle]
-name = "invalid vehicle"
+[group."invalid vehicle"]
 desc = "Errors are thrown when the vehicle has extra parts, which should never happen"
 
-[group.broken_vehicle]
-name = "broken vehicle"
+[group."broken vehicle"]
 desc = "When the vehicle has parts that need repair, the respective functions should detect the issue"
 
 # Tests define the actual tests that will be generated
 
-[test.valid_headlights]
-name = "check headlights"
-group = "valid_vehicle"
+[test."check headlights"]
+group = "valid vehicle"
 desc = "The function for checking headlights should return true if the vehicle has the correct number of headlights"
 
-[test.valid_tires]
-name = "check tires"
-group = "valid_vehicle"
+[test."check tires"]
+group = "valid vehicle"
 desc = "The function for checking tires should return true if the vehicle has the correct number of inflated tires"
 
-[test.broken_headlight]
-name = "broken headlight is caught"
-group = "broken_vehicle"
+[test."broken headlight is caught"]
+group = "broken vehicle"
 desc = "The function for checking headlights should return false if the vehicle has a broken headlight"
 
-[test.flat_tire]
-name = "flat tire is caught"
-group = "broken_vehicle"
+[test."flat tire is caught"]
+group = "broken vehicle"
 desc = "The function for checking tires should return false if the vehicle has a flat tire"
 
-[test.extra_tire]
-name = "extra tire throws error"
-group = "invalid_vehicle"
+[test."extra tire throws error"]
+group = "invalid vehicle"
 desc = "Having an extra tire is invalid and should throw an error"
 
-[test.extra_headlight]
-name = "extra headlight throws error"
-group = "invalid_vehicle"
+[test."extra headlight throws error"]
+group = "invalid vehicle"
 desc = "Having an extra headlight is invalid and should throw an error"

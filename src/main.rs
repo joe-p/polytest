@@ -255,19 +255,16 @@ pub struct TargetConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct SuiteConfig {
-    pub name: Option<String>,
     pub groups: Vec<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GroupConfig {
-    pub name: Option<String>,
     pub desc: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct TestConfig {
-    pub name: Option<String>,
     pub desc: Option<String>,
     pub group: String,
 }
@@ -281,7 +278,7 @@ pub struct Suite {
 impl Suite {
     pub fn from_config(config: &Config, suite_config: &SuiteConfig, suite_id: &str) -> Self {
         Self {
-            name: suite_config.name.clone().unwrap_or(suite_id.to_string()),
+            name: suite_id.to_string(),
             groups: config
                 .groups
                 .iter()
@@ -316,13 +313,13 @@ impl Group {
             .iter()
             .filter(|(_, test)| test.group == group_id)
             .map(|(id, test)| Test {
-                name: test.name.clone().unwrap_or(id.to_string()),
+                name: id.to_string(),
                 desc: test.desc.clone().unwrap_or("".to_string()),
             })
             .collect();
 
         Self {
-            name: group_config.name.clone().unwrap_or(group_id.to_string()),
+            name: group_id.to_string(),
             tests,
             desc: group_config.desc.clone().unwrap_or("".to_string()),
         }
@@ -338,7 +335,7 @@ pub struct Test {
 impl Test {
     pub fn from_config(test_config: &TestConfig, test_id: &str) -> Self {
         Self {
-            name: test_config.name.clone().unwrap_or(test_id.to_string()),
+            name: test_id.to_string(),
             desc: test_config.desc.clone().unwrap_or("".to_string()),
         }
     }

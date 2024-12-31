@@ -19,11 +19,11 @@ describe("car", () => {
   describe("invalid vehicle", () => {
     // Polytest Group: invalid vehicle
 
-    test("extra tire throws error", () => {
+    test("extra headlight throws error", () => {
       throw new Error("TEST NOT IMPLEMENTED");
     });
 
-    test("extra headlight throws error", () => {
+    test("extra tire throws error", () => {
       throw new Error("TEST NOT IMPLEMENTED");
     });
 
