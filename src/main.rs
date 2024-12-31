@@ -261,7 +261,6 @@ pub struct SuiteConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct GroupConfig {
-    pub tests: Vec<String>,
     pub name: Option<String>,
     pub desc: Option<String>,
 }
@@ -270,6 +269,7 @@ pub struct GroupConfig {
 pub struct TestConfig {
     pub name: Option<String>,
     pub desc: Option<String>,
+    pub group: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -311,16 +311,13 @@ impl Group {
     }
 
     fn from_config(config: &Config, group_config: &GroupConfig, group_id: &str) -> Self {
-        let tests: Vec<Test> = group_config
+        let tests: Vec<Test> = config
             .tests
             .iter()
-            .map(|test_id| {
-                let test = config.tests.get(test_id).expect("test should exist");
-
-                Test {
-                    name: test.name.clone().unwrap_or(test_id.to_string()),
-                    desc: test.desc.clone().unwrap_or("".to_string()),
-                }
+            .filter(|(_, test)| test.group == group_id)
+            .map(|(id, test)| Test {
+                name: test.name.clone().unwrap_or(id.to_string()),
+                desc: test.desc.clone().unwrap_or("".to_string()),
             })
             .collect();
 

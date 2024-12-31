@@ -38,41 +38,44 @@ groups = ["valid_vehicle", "invalid_vehicle", "broken_vehicle"]
 
 [group.valid_vehicle]
 name = "valid vehicle"
-tests = ["valid_headlights", "valid_tires"]
 desc = "Functionality works as expected when the vehicle is valid and not missing any parts"
 
 [group.invalid_vehicle]
 name = "invalid vehicle"
-tests = ["extra_headlight", "extra_tire"]
 desc = "Errors are thrown when the vehicle has extra parts, which should never happen"
 
 [group.broken_vehicle]
 name = "broken vehicle"
-tests = ["broken_headlight", "flat_tire"]
 desc = "When the vehicle has parts that need repair, the respective functions should detect the issue"
 
 # Tests define the actual tests that will be generated
 
 [test.valid_headlights]
 name = "check headlights"
+group = "valid_vehicle"
 desc = "The function for checking headlights should return true if the vehicle has the correct number of headlights"
 
 [test.valid_tires]
 name = "check tires"
+group = "valid_vehicle"
 desc = "The function for checking tires should return true if the vehicle has the correct number of inflated tires"
 
 [test.broken_headlight]
 name = "broken headlight is caught"
+group = "broken_vehicle"
 desc = "The function for checking headlights should return false if the vehicle has a broken headlight"
 
 [test.flat_tire]
 name = "flat tire is caught"
+group = "broken_vehicle"
 desc = "The function for checking tires should return false if the vehicle has a flat tire"
 
 [test.extra_tire]
 name = "extra tire throws error"
+group = "invalid_vehicle"
 desc = "Having an extra tire is invalid and should throw an error"
 
 [test.extra_headlight]
 name = "extra headlight throws error"
+group = "invalid_vehicle"
 desc = "Having an extra headlight is invalid and should throw an error"

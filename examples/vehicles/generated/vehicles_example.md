@@ -30,8 +30,8 @@
 
 | Name | Description |
 | --- | --- |
-| [extra headlight throws error](#extra-headlight-throws-error) | Having an extra headlight is invalid and should throw an error |
 | [extra tire throws error](#extra-tire-throws-error) | Having an extra tire is invalid and should throw an error |
+| [extra headlight throws error](#extra-headlight-throws-error) | Having an extra headlight is invalid and should throw an error |
 
 ### Broken Vehicle
 

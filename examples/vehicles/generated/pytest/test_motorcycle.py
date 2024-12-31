@@ -17,13 +17,13 @@ def test_broken_headlight_is_caught():
 # Polytest Group: invalid vehicle
 
 @pytest.mark.group_invalid_vehicle
-def test_extra_tire_throws_error():
-    """Having an extra tire is invalid and should throw an error"""
+def test_extra_headlight_throws_error():
+    """Having an extra headlight is invalid and should throw an error"""
     raise Exception("TEST NOT IMPLEMENTED")
 
 @pytest.mark.group_invalid_vehicle
-def test_extra_headlight_throws_error():
-    """Having an extra headlight is invalid and should throw an error"""
+def test_extra_tire_throws_error():
+    """Having an extra tire is invalid and should throw an error"""
     raise Exception("TEST NOT IMPLEMENTED")
 
 # Polytest Group: valid vehicle
