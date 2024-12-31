@@ -1,0 +1,4 @@
+import pytest
+from fixtures import {% for group in suite.groups %}{{ group.name | convert_case('Pascal') }}{% if not loop.last %}, {% endif %}{% endfor %}
+
+# Polytest Suite: {{ suite.name }}

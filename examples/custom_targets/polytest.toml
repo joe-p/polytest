@@ -4,9 +4,25 @@ name = "custom targets example"
 [target.pytest]
 out_dir = "./generated/pytest"
 
-################
-# Custom targets
-################
+# A custom target must define either of the following sets of options:
+# 
+# For test generation targets, which may have multiple suite files that are updated each time `polytest generate` is ran:
+# - out_dir
+# - test_regex_template
+# - suite_file_name_template
+# - suite_template
+# - group_template
+# - test_template
+#
+# For a plan generation target, which will only have one generated file
+# - out_dir
+# - plan_file_name_template
+# - plan_template
+#
+# See the comments in [test.test_cases_csv] for an example of a plan generation target
+# and the comments in [target.pytest_with_fixtures] for an example of a test generation target
+#
+# It is also possible to create a target that generates both test suite files and a plan file
 
 # This is a custom target that generates a CSV file with all the test cases in the plan
 [target.test_cases_csv]
@@ -17,6 +33,31 @@ plan_file_name_template = "{{ name | convert_case('Snake') }}_test_cases.csv"
 
 # Path to a Jinja template file for the content of the file that is generated
 plan_template = "./templates/test_cases_csv/plan.csv.jinja"
+
+
+[target.pytest_with_fixtures]
+out_dir = "./generated/pytest_with_fixtures"
+
+# A Jinja template string used to determine which test cases are already implemented
+test_regex_template = "def test_{{ name | convert_case('Snake') }}"
+
+# A Jinja template string for the name of the file that is generated for each suite
+# Note that multiple suites could be in the same file if desired (i.e. making this "test_all_suites.py")
+suite_file_name_template = "test_{{ suite.name | convert_case('Snake') }}.py"
+
+# A Jinja template string for the suite content
+# MUST contain a comment with "# Polytest Suite: {{ suite.name }}" somewhere in the template
+# All of the group content will be generated under this comment
+suite_template = "./templates/pytest_with_fixtures/suite.py.jinja"
+
+# A Jinja template string for the group content
+# MUST contain a comment with "# Polytest Group: {{ group.name }}" somewhere in the template
+# All of the test cases will be generated under this comment
+group_template = "./templates/pytest_with_fixtures/group.py.jinja"
+
+# A Jinja template string for the test case scaffolding
+test_template = "./templates/pytest_with_fixtures/test.py.jinja"
+
 
 #########################################
 # The suite, groups, and test definitions
