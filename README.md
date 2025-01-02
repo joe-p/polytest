@@ -20,9 +20,15 @@ cargo install --git https://github.com/joe-p/polytest.git
 
 ## Usage
 
+### Configuration
+
 Polytest is entirely driven by a TOML configuration file. This file, `polytest.toml` is used to define the test plan and describe the test generation and validation targets. See [example/vehicles/polytest.toml](examples/vehicles/polytest.toml) for how to define a test plan and targets. The generated test scaffolding can be seen for [pytest](examples/vehicles/generated/pytest/) and [bun](examples/vehicles/generated/bun/). This example also contains a [markdown test plan](examples/vehicles/generated/vehicles_example.md) file that is automatically generated from the `polytest.toml`.
 
+### Generate
+
 In any directory with a `polytest.toml` file, run `polytest generate` to generate the test scaffolding for all targets. Any files that do not yet exist will be created and test cases without implementations will have scaffolding generated. Any existing code will not be overwritten.
+
+### Validate
 
 In any directory with a `polytest.toml` file, run `polytest validate` to validate that all test cases are implemented and that no tests are implemented that are not in the test plan.
 
