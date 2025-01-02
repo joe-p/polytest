@@ -1,5 +1,10 @@
 [package]
 name = "polytest"
+categories = ["development-tools", "development-tools::testing"]
+license = "MIT"
+description = "A low-friction language-agnostic tool for keeping tests in sync across teams and implementations"
+repository = "https://github.com/joe-p/polytest"
+exclude = ["examples/"]
 version = "0.1.0"
 edition = "2021"
 
