@@ -88,12 +88,14 @@ impl ConfigMeta {
 struct RunnerConfig {
     command: String,
     args: Vec<String>,
+    fail_regex_template: String,
 }
 
 struct Runner {
     id: String,
     command: String,
     args: Vec<String>,
+    fail_regex_template: String,
 }
 
 impl Runner {
@@ -102,6 +104,7 @@ impl Runner {
             id: id.to_string(),
             command: config.command.clone(),
             args: config.args.clone(),
+            fail_regex_template: config.fail_regex_template.clone(),
         }
     }
 }
@@ -415,6 +418,14 @@ fn main() -> Result<()> {
 
     let mut templates: HashMap<String, String> = HashMap::new();
 
+    for (runner_id, runner_config) in &config_meta.config.runners {
+        let runner = Runner::from_config(runner_config, runner_id);
+        templates.insert(
+            format!("{}_fail_regex", runner_id),
+            runner.fail_regex_template,
+        );
+    }
+
     for (target_id, target_config) in &config_meta.config.targets {
         let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
         if let Some(suite_file_name_template) = &target.suite_file_name_template {
@@ -456,6 +467,7 @@ fn main() -> Result<()> {
     }
 
     templates.iter().for_each(|(name, template)| {
+        println!("template: {:?} {:?}", name, template);
         env.add_template(name, template).unwrap();
     });
 
@@ -480,6 +492,7 @@ fn main() -> Result<()> {
         }
         Commands::Run(_run) => {
             let mut statuses = IndexMap::<String, ExitStatus>::new();
+            let mut outputs = HashMap::<String, String>::new();
             for (runner_id, runner_config) in &config_meta.config.runners {
                 let runner = Runner::from_config(runner_config, runner_id);
 
@@ -493,15 +506,62 @@ fn main() -> Result<()> {
                 let output = &mut String::new();
                 BufReader::new(reader).read_to_string(output)?;
 
+                outputs.insert(runner_id.clone(), output.clone());
+
                 println!("Output: {}", output);
                 statuses.insert(runner_id.clone(), runner_cmd.run()?.status);
             }
 
             for (runner_id, status) in statuses {
+                // TODO: Right now we assume target and runner ID are the same. We need to implement a way to map targets to runners
+                let target = Target::from_config(
+                    &config_meta.config.targets[&runner_id],
+                    &runner_id,
+                    &config_meta.root_dir,
+                )?;
+
                 if status.success() {
                     println!("{} ran succesfully!", runner_id);
                 } else {
+                    let fail_regex_template = env
+                        .get_template(format!("{}_fail_regex", runner_id).as_str())
+                        .expect("template should exist since it was just added above");
+
                     eprintln!("{} failed to run succesfully ({})", runner_id, status);
+                    for (suite_id, suite_config) in &config_meta.config.suites {
+                        let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
+                        let suite_file_name = env
+                            .get_template(format!("{}_suite_file_name", runner_id).as_str())
+                            .expect("template should exist since it was just added above")
+                            .render(minijinja::context! {
+                                suite => minijinja::Value::from_serialize(&suite),
+                            })
+                            .context(format!("failed to render file name for {}", target.id))?;
+
+                        for group in &suite.groups {
+                            for test in &group.tests {
+                                let fail_regex = fail_regex_template
+                                    .render(minijinja::context! {
+                                        file_name => minijinja::Value::from(&suite_file_name),
+                                        group_name => minijinja::Value::from(&group.name),
+                                        test_name => minijinja::Value::from(&test.name),
+                                    })
+                                    .context(format!(
+                                        "failed to render fail regex for {}",
+                                        runner_id
+                                    ))?;
+
+                                let fail_regex = Regex::new(&fail_regex).unwrap();
+
+                                if fail_regex.is_match(&outputs[&runner_id]) {
+                                    eprintln!(
+                                        "  {} > {} > {} > {}: FAILED",
+                                        runner_id, suite.name, group.name, test.name
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
