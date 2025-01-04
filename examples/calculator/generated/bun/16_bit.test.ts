@@ -11,7 +11,7 @@ function multiply(a: number, b: number): number {
 }
 
 describe("16bit", () => {
-  // Polytest Suite: 8bit
+  // Polytest Suite: 16bit
 
   describe("multiply", () => {
     // Polytest Group: multiply

@@ -12,7 +12,7 @@ def multiply(a: int, b: int) -> int:
     return (a * b) % (MAX_VALUE + 1)
 
 
-# Polytest Suite: 8bit
+# Polytest Suite: 16bit
 
 # Polytest Group: multiply
 
