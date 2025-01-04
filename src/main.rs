@@ -407,6 +407,58 @@ fn main() -> Result<()> {
     let parsed = Cli::parse();
     let config_meta = ConfigMeta::from_file("polytest.toml")?;
 
+    let mut env = minijinja::Environment::new();
+    env.add_filter("convert_case", convert_case_filter);
+    env.set_lstrip_blocks(true);
+
+    env.set_trim_blocks(true);
+
+    let mut templates: HashMap<String, String> = HashMap::new();
+
+    for (target_id, target_config) in &config_meta.config.targets {
+        let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
+        if let Some(suite_file_name_template) = &target.suite_file_name_template {
+            templates.insert(
+                format!("{}_suite_file_name", target_id),
+                suite_file_name_template.to_string(),
+            );
+        }
+
+        if let Some(plan_file_name_template) = &target.plan_file_name_template {
+            templates.insert(
+                format!("{}_plan_file_name", target_id),
+                plan_file_name_template.to_string(),
+            );
+        }
+
+        if let Some(test_regex_template) = &target.test_regex_template {
+            templates.insert(
+                format!("{}_test_regex", target_id),
+                test_regex_template.to_string(),
+            );
+        }
+
+        if let Some(suite_template) = &target.suite_template {
+            templates.insert(format!("{}_suite", target_id), suite_template.to_string());
+        }
+
+        if let Some(group_template) = &target.group_template {
+            templates.insert(format!("{}_group", target_id), group_template.to_string());
+        }
+
+        if let Some(test_template) = &target.test_template {
+            templates.insert(format!("{}_test", target_id), test_template.to_string());
+        }
+
+        if let Some(plan_template) = &target.plan_template {
+            templates.insert(format!("{}_plan", target_id), plan_template.to_string());
+        }
+    }
+
+    templates.iter().for_each(|(name, template)| {
+        env.add_template(name, template).unwrap();
+    });
+
     match parsed.command {
         Commands::Generate(generate) => {
             let targets = generate
@@ -414,7 +466,7 @@ fn main() -> Result<()> {
                 .unwrap_or(config_meta.config.targets.keys().cloned().collect());
 
             for target in targets {
-                generate_target(&config_meta, &target)?;
+                generate_target(&config_meta, &target, &env)?;
             }
         }
         Commands::Validate(validate) => {
@@ -423,7 +475,7 @@ fn main() -> Result<()> {
                 .unwrap_or(vec!["pytest".to_string(), "bun".to_string()]);
 
             for target in targets {
-                validate_target(&config_meta, &target)?;
+                validate_target(&config_meta, &target, &env)?;
             }
         }
         Commands::Run(_run) => {
@@ -458,7 +510,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
+fn validate_target(
+    config_meta: &ConfigMeta,
+    target_id: &str,
+    env: &minijinja::Environment,
+) -> Result<()> {
     let target_config = config_meta
         .config
         .targets
@@ -468,10 +524,6 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
     let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
     let file_template_name = format!("{}_suite_file_name", target.id);
-    let mut env = minijinja::Environment::new();
-    env.add_filter("convert_case", convert_case_filter);
-    env.set_lstrip_blocks(true);
-    env.set_trim_blocks(true);
 
     let suites: Vec<Suite> = config_meta
         .config
@@ -480,25 +532,7 @@ fn validate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
         .map(|(id, s)| Suite::from_config(&config_meta.config, s, id))
         .collect();
 
-    let source = &target.suite_file_name_template.as_ref().ok_or(anyhow!(
-        "suite_file_name_template option is missing for target {}",
-        target.id
-    ))?;
-
-    env.add_template(file_template_name.as_str(), source)
-        .context(format!(
-            "failed to add template for {} file name",
-            target.id
-        ))?;
-
     let test_regex_template_name = format!("{}_test_regex", target.id);
-    if let Some(test_regex_template) = &target.test_regex_template {
-        env.add_template(test_regex_template_name.as_str(), test_regex_template)
-            .context(format!(
-                "failed to add template for {} test regex",
-                target.id
-            ))?;
-    }
 
     let test_regex_template = env
         .get_template(&test_regex_template_name)
@@ -642,12 +676,11 @@ fn find_test(
     Ok(re.is_match(input))
 }
 
-fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
-    let mut env = minijinja::Environment::new();
-    env.add_filter("convert_case", convert_case_filter);
-    env.set_lstrip_blocks(true);
-    env.set_trim_blocks(true);
-
+fn generate_target(
+    config_meta: &ConfigMeta,
+    target_id: &str,
+    env: &minijinja::Environment,
+) -> Result<()> {
     let target_config = config_meta
         .config
         .targets
@@ -656,80 +689,12 @@ fn generate_target(config_meta: &ConfigMeta, target_id: &str) -> Result<()> {
 
     let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
-    // Define these here to avoid lifetime issues with env
-    let plan_template_name = format!("{}_plan", target_id);
-    let plan_file_template_name = format!("{}_plan_file_name", target_id);
-    let suite_file_template_name = format!("{}_suite_file_name", target_id);
-    let suite_template_name = format!("{}_suite", target_id);
-
-    if let Some(plan_template) = &target.plan_template {
-        env.add_template(&plan_template_name, plan_template)
-            .context(format!("failed to add template for {} plan", target_id))?;
-
-        let source = &target.plan_file_name_template.as_ref().ok_or(anyhow!(
-            "plan_file_name_template option is missing for target {}",
-            target.id
-        ))?;
-
-        env.add_template(plan_file_template_name.as_str(), source)
-            .context(format!(
-                "failed to add template for {} file name",
-                target_id
-            ))?;
-
-        generate_plan(config_meta, &target, &env)?;
-
-        env.remove_template(&plan_template_name);
-        env.remove_template(&plan_file_template_name);
+    if target.suite_template.is_some() {
+        generate_suite(config_meta, &target, &env)?;
     }
 
-    if let Some(suite_template) = &target.suite_template {
-        env.add_template(suite_template_name.as_str(), suite_template)
-            .context(format!("failed to add template for {} suite", target_id))?;
-
-        let group_template_name = format!("{}_group", target_id);
-        let group_template = target
-            .group_template
-            .as_ref()
-            .expect("group_template should be set by from_config");
-        env.add_template(group_template_name.as_str(), group_template)
-            .context(format!("failed to add template for {} group", target_id))?;
-
-        let test_template_name = format!("{}_test", target_id);
-        let test_template = target
-            .test_template
-            .as_ref()
-            .expect("test_template should be set by from_config");
-        env.add_template(test_template_name.as_str(), test_template)
-            .context(format!("failed to add template for {} test", target_id))?;
-
-        let source = &target.suite_file_name_template.as_ref().ok_or(anyhow!(
-            "suite_file_name_template option is missing for target {}",
-            target.id
-        ))?;
-
-        env.add_template(suite_file_template_name.as_str(), source)
-            .context(format!(
-                "failed to add template for {} file name",
-                target_id
-            ))?;
-
-        let test_regex_template_name = format!("{}_test_regex", target_id);
-
-        if let Some(test_regex_template) = &target.test_regex_template {
-            env.add_template(test_regex_template_name.as_str(), test_regex_template)
-                .context(format!(
-                    "failed to add template for {} test regex",
-                    target_id
-                ))?;
-        }
-
-        generate_suite(config_meta, &target, &env)?;
-
-        env.remove_template(suite_template_name.as_str());
-        env.remove_template(group_template_name.as_str());
-        env.remove_template(test_template_name.as_str());
-        env.remove_template(suite_file_template_name.as_str());
+    if target.plan_template.is_some() {
+        generate_plan(config_meta, &target, &env)?;
     }
 
     Ok(())
