@@ -1,0 +1,54 @@
+import pytest
+
+# const MAX_VALUE = 2**8 - 1;
+
+# function add(a: number, b: number): number {
+#   return (a + b) % (MAX_VALUE + 1);
+# }
+
+# function multiply(a: number, b: number): number {
+#   return (a * b) % (MAX_VALUE + 1);
+# }
+
+MAX_VALUE = 2**8 - 1
+
+
+def add(a: int, b: int) -> int:
+    return (a + b) % (MAX_VALUE + 1)
+
+
+def multiply(a: int, b: int) -> int:
+    return (a * b) % (MAX_VALUE + 1)
+
+
+# Polytest Suite: 8bit
+
+# Polytest Group: multiply
+
+
+@pytest.mark.group_multiply
+def test_product_overflow():
+    """"""
+    assert multiply(MAX_VALUE, 2) == MAX_VALUE - 1
+
+
+@pytest.mark.group_multiply
+def test_product():
+    """"""
+    assert multiply(3, 4) == 12
+
+
+# Polytest Group: add
+
+
+@pytest.mark.group_add
+def test_overflow_sum():
+    """"""
+    assert add(MAX_VALUE, 1) == 0
+
+
+@pytest.mark.group_add
+def test_sum():
+    """"""
+    # Intentional failure
+    assert add(3, 4) == 8

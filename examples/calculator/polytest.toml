@@ -1,0 +1,39 @@
+name = "calculator example"
+
+[target.pytest]
+out_dir = "./generated/pytest"
+
+[runner.pytest]
+command = "pytest"
+args = ["-v", "--color=yes"]
+
+[target.bun]
+out_dir = "./generated/bun"
+
+[runner.bun]
+command = "bun"
+args = ["test"]
+
+[suite.8bit]
+groups = ["add", "multiply"]
+
+[suite.16bit]
+groups = ["add", "multiply"]
+
+[group.add]
+desc = "Addition tests"
+
+[group.multiply]
+desc = "Multiplication tests"
+
+[test.sum]
+group = "add"
+
+[test.overflow_sum]
+group = "add"
+
+[test.product]
+group = "multiply"
+
+[test.product_overflow]
+group = "multiply"
