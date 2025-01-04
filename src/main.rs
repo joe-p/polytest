@@ -1,12 +1,16 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
+use duct::cmd;
 use glob::glob;
 use indexmap::IndexMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::prelude::*;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 
 const GROUP_COMMENT: &str = "Polytest Group:";
 const SUITE_COMMENT: &str = "Polytest Suite:";
@@ -77,6 +81,28 @@ impl ConfigMeta {
                 .to_path_buf(),
             config,
         })
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct RunnerConfig {
+    command: String,
+    args: Vec<String>,
+}
+
+struct Runner {
+    id: String,
+    command: String,
+    args: Vec<String>,
+}
+
+impl Runner {
+    fn from_config(config: &RunnerConfig, id: &str) -> Self {
+        Self {
+            id: id.to_string(),
+            command: config.command.clone(),
+            args: config.args.clone(),
+        }
     }
 }
 
@@ -238,6 +264,9 @@ struct Config {
 
     #[serde(rename = "test")]
     tests: IndexMap<String, TestConfig>,
+
+    #[serde(rename = "runner")]
+    runners: HashMap<String, RunnerConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -348,20 +377,30 @@ enum Commands {
 
     /// Validate test files
     Validate(Validate),
+
+    /// Run tests
+    Run(Run),
 }
 
 #[derive(Args)]
 struct Generate {
-    /// The target to generate tests for
+    /// A target to generate tests for
     #[arg(short, long)]
     target: Option<Vec<String>>,
 }
 
 #[derive(Args)]
 struct Validate {
-    /// The target to validate tests for
+    /// A target to validate tests for
     #[arg(short, long)]
     target: Option<Vec<String>>,
+}
+
+#[derive(Args)]
+struct Run {
+    /// A test runner to execute
+    #[arg(short, long)]
+    runner: Option<Vec<String>>,
 }
 
 fn main() -> Result<()> {
@@ -385,6 +424,33 @@ fn main() -> Result<()> {
 
             for target in targets {
                 validate_target(&config_meta, &target)?;
+            }
+        }
+        Commands::Run(_run) => {
+            let mut statuses = IndexMap::<String, ExitStatus>::new();
+            for (runner_id, runner_config) in &config_meta.config.runners {
+                let runner = Runner::from_config(runner_config, runner_id);
+
+                println!(
+                    "Running {}: {} {:?}",
+                    runner.id, runner.command, runner.args
+                );
+
+                let runner_cmd = cmd(runner.command, &runner.args[..]).unchecked();
+                let reader = runner_cmd.stderr_to_stdout().reader()?;
+                let output = &mut String::new();
+                BufReader::new(reader).read_to_string(output)?;
+
+                println!("Output: {}", output);
+                statuses.insert(runner_id.clone(), runner_cmd.run()?.status);
+            }
+
+            for (runner_id, status) in statuses {
+                if status.success() {
+                    println!("{} ran succesfully!", runner_id);
+                } else {
+                    eprintln!("{} failed to run succesfully ({})", runner_id, status);
+                }
             }
         }
     }

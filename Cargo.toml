@@ -9,12 +9,34 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Used to make it easier to bubble up useful errors to the user
 anyhow = "1.0.95"
+
+# Used to easily parse command line arguments
 clap = { version = "4.5.23", features = ["derive"] }
+
+# Used to expose the various case conversions as Jinja template filters
 convert_case = "0.6.0"
+
+# Used mainly becuase it makes combinindg stderr and stdout easier
+# Also see https://github.com/oconnor663/duct.py/blob/master/gotchas.md
+duct = "0.13.7"
+
+# Used to glob files in the file system (i.e. globbing the template directory)
 glob = "0.3.2"
+
+# Used to preserve order of TOML keys to the order they are defined in the file
+# can be preserved in generated outputs
 indexmap = { version = "2.7.0", features = ["serde"] }
+
+# Used for test generation and various other string rendering such as test regexes
 minijinja = "2.5.0"
+
+# Used to find test implementations
 regex = "1.11.1"
+
+# Used to easily deserialize the TOML configuration file
 serde = { version = "1.0.216", features = ["derive"] }
-toml = { version = "0.8.19", features = ["preserve_order"] }
+
+# Used to parse the TOML configuration file
+toml = "0.8.19"
