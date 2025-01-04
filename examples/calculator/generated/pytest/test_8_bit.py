@@ -1,14 +1,5 @@
 import pytest
 
-# const MAX_VALUE = 2**8 - 1;
-
-# function add(a: number, b: number): number {
-#   return (a + b) % (MAX_VALUE + 1);
-# }
-
-# function multiply(a: number, b: number): number {
-#   return (a * b) % (MAX_VALUE + 1);
-# }
 
 MAX_VALUE = 2**8 - 1
 
