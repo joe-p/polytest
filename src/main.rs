@@ -916,6 +916,14 @@ fn generate_plan(
         .context(format!("failed to render file name for {}", target.id))?;
 
     let file_path = target.out_dir.join(file_name);
+
+    if let Some(parent) = file_path.parent() {
+        std::fs::create_dir_all(parent).context(format!(
+            "failed to create directory for {}",
+            parent.display()
+        ))?;
+    }
+
     std::fs::write(file_path, content)
         .context(format!("failed to write plan for {}", target.id))?;
 
