@@ -6,7 +6,8 @@ out_dir = "./generated/pytest"
 [runner.pytest]
 command = "pytest"
 args = ["-v"]
-fail_regex_template = "{{ file_name }}::test_{{ test_name }} FAILED"
+fail_regex_template = '{{ file_name }}::test_{{ test_name }} FAILED'
+pass_regex_template = '{{ file_name }}::test_{{ test_name }} PASSED'
 
 [target.bun]
 out_dir = "./generated/bun"
@@ -14,7 +15,8 @@ out_dir = "./generated/bun"
 [runner.bun]
 command = "bun"
 args = ["test"]
-fail_regex_template = "TODO"
+fail_regex_template = '\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$'
+pass_regex_template = '\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$'
 
 [suite.8bit]
 groups = ["add", "multiply"]

@@ -89,6 +89,7 @@ struct RunnerConfig {
     command: String,
     args: Vec<String>,
     fail_regex_template: String,
+    pass_regex_template: String,
 }
 
 struct Runner {
@@ -96,6 +97,7 @@ struct Runner {
     command: String,
     args: Vec<String>,
     fail_regex_template: String,
+    pass_regex_template: String,
 }
 
 impl Runner {
@@ -104,7 +106,8 @@ impl Runner {
             id: id.to_string(),
             command: config.command.clone(),
             args: config.args.clone(),
-            fail_regex_template: config.fail_regex_template.clone(),
+            fail_regex_template: "(?m)".to_owned() + config.fail_regex_template.as_str(),
+            pass_regex_template: "(?m)".to_owned() + config.pass_regex_template.as_str(),
         }
     }
 }
@@ -424,6 +427,10 @@ fn main() -> Result<()> {
             format!("{}_fail_regex", runner_id),
             runner.fail_regex_template,
         );
+        templates.insert(
+            format!("{}_pass_regex", runner_id),
+            runner.pass_regex_template,
+        );
     }
 
     for (target_id, target_config) in &config_meta.config.targets {
@@ -467,7 +474,6 @@ fn main() -> Result<()> {
     }
 
     templates.iter().for_each(|(name, template)| {
-        println!("template: {:?} {:?}", name, template);
         env.add_template(name, template).unwrap();
     });
 
@@ -501,14 +507,15 @@ fn main() -> Result<()> {
                     runner.id, runner.command, runner.args
                 );
 
-                let runner_cmd = cmd(runner.command, &runner.args[..]).unchecked();
+                // TODO: Allow runners to set env
+                let runner_cmd = cmd(runner.command, &runner.args[..])
+                    .env("NO_COLOR", "1")
+                    .unchecked();
                 let reader = runner_cmd.stderr_to_stdout().reader()?;
                 let output = &mut String::new();
                 BufReader::new(reader).read_to_string(output)?;
 
                 outputs.insert(runner_id.clone(), output.clone());
-
-                println!("Output: {}", output);
                 statuses.insert(runner_id.clone(), runner_cmd.run()?.status);
             }
 
@@ -520,47 +527,85 @@ fn main() -> Result<()> {
                     &config_meta.root_dir,
                 )?;
 
-                if status.success() {
-                    println!("{} ran succesfully!", runner_id);
-                } else {
-                    let fail_regex_template = env
-                        .get_template(format!("{}_fail_regex", runner_id).as_str())
-                        .expect("template should exist since it was just added above");
+                let fail_regex_template = env
+                    .get_template(format!("{}_fail_regex", runner_id).as_str())
+                    .expect("template should exist since it was just added above");
 
-                    eprintln!("{} failed to run succesfully ({})", runner_id, status);
-                    for (suite_id, suite_config) in &config_meta.config.suites {
-                        let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
-                        let suite_file_name = env
-                            .get_template(format!("{}_suite_file_name", runner_id).as_str())
-                            .expect("template should exist since it was just added above")
-                            .render(minijinja::context! {
-                                suite => minijinja::Value::from_serialize(&suite),
-                            })
-                            .context(format!("failed to render file name for {}", target.id))?;
+                let pass_regex_template = env
+                    .get_template(format!("{}_pass_regex", runner_id).as_str())
+                    .context(format!("could not find test pass regex for {}", runner_id))?;
 
-                        for group in &suite.groups {
-                            for test in &group.tests {
-                                let fail_regex = fail_regex_template
+                let mut fails: Vec<String> = Vec::new();
+
+                for (suite_id, suite_config) in &config_meta.config.suites {
+                    let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
+                    let suite_file_name = env
+                        .get_template(format!("{}_suite_file_name", runner_id).as_str())
+                        .expect("template should exist since it was just added above")
+                        .render(minijinja::context! {
+                            suite => minijinja::Value::from_serialize(&suite),
+                        })
+                        .context(format!("failed to render file name for {}", target.id))?;
+
+                    for group in &suite.groups {
+                        for test in &group.tests {
+                            let fail_regex = fail_regex_template
+                                .render(minijinja::context! {
+                                    file_name => minijinja::Value::from(&suite_file_name),
+                                    suite_name => minijinja::Value::from(&suite.name),
+                                    group_name => minijinja::Value::from(&group.name),
+                                    test_name => minijinja::Value::from(&test.name),
+                                })
+                                .context(format!(
+                                    "failed to render fail regex for {}",
+                                    runner_id
+                                ))?;
+
+                            let fail_regex = Regex::new(&fail_regex).unwrap();
+
+                            if fail_regex.is_match(&outputs[&runner_id]) {
+                                fails.push(
+                                    format!(
+                                        "  {} > {} > {} > {}: FAILED",
+                                        runner_id, suite.name, group.name, test.name
+                                    )
+                                    .to_string(),
+                                );
+                            } else {
+                                let pass_regex = pass_regex_template
                                     .render(minijinja::context! {
                                         file_name => minijinja::Value::from(&suite_file_name),
+                                        suite_name => minijinja::Value::from(&suite.name),
                                         group_name => minijinja::Value::from(&group.name),
                                         test_name => minijinja::Value::from(&test.name),
                                     })
                                     .context(format!(
-                                        "failed to render fail regex for {}",
+                                        "failed to render pass regex for {}",
                                         runner_id
                                     ))?;
 
-                                let fail_regex = Regex::new(&fail_regex).unwrap();
+                                let pass_regex = Regex::new(&pass_regex).unwrap();
 
-                                if fail_regex.is_match(&outputs[&runner_id]) {
-                                    eprintln!(
-                                        "  {} > {} > {} > {}: FAILED",
-                                        runner_id, suite.name, group.name, test.name
+                                if !pass_regex.is_match(&outputs[&runner_id]) {
+                                    fails.push(
+                                        format!(
+                                            "  {} > {} > {} > {}: UNKNOWN",
+                                            runner_id, suite.name, group.name, test.name
+                                        )
+                                        .to_string(),
                                     );
                                 }
                             }
                         }
+                    }
+                }
+                // If the command was exit 0 AND there were no FAILED or UNKNOWN test results
+                if status.success() && fails.is_empty() {
+                    println!("{} ran succesfully!", runner_id);
+                } else {
+                    eprintln!("{} failed to run succesfully ({})", runner_id, status);
+                    for failure in &fails {
+                        eprintln!("{failure}")
                     }
                 }
             }
