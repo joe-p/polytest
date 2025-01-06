@@ -141,7 +141,7 @@ impl Target {
                 return Ok(Self {
                     id: id.to_string(),
                     test_regex_template: Some(
-                        "def test_{{ name | convert_case('Snake') }}".to_string(),
+                        r"(?m)def test_{{ name | convert_case('Snake') }}\(".to_string(),
                     ),
                     plan_file_name_template: None,
                     suite_file_name_template: Some(
@@ -163,7 +163,7 @@ impl Target {
             "bun" => {
                 return Ok(Self {
                     id: id.to_string(),
-                    test_regex_template: Some("test\\(\"{{ name }}".to_string()),
+                    test_regex_template: Some(r#"(?m)test\("{{ name }}","#.to_string()),
                     plan_file_name_template: None,
                     suite_file_name_template: Some(
                         "{{ suite.name | convert_case('Snake') }}.test.ts".to_string(),
@@ -203,7 +203,10 @@ impl Target {
 
         let mut target = Self {
             id: id.to_string(),
-            test_regex_template: config.test_regex_template.to_owned(),
+            test_regex_template: config
+                .test_regex_template
+                .clone()
+                .map(|t| "(?m)".to_owned() + t.as_str()),
             out_dir: config_root.join(&config.out_dir),
             suite_file_name_template: config.suite_file_name_template.clone(),
             plan_file_name_template: config.plan_file_name_template.clone(),
