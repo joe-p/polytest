@@ -90,6 +90,7 @@ struct RunnerConfig {
     args: Vec<String>,
     fail_regex_template: String,
     pass_regex_template: String,
+    env: Option<HashMap<String, String>>,
 }
 
 struct Runner {
@@ -98,6 +99,7 @@ struct Runner {
     args: Vec<String>,
     fail_regex_template: String,
     pass_regex_template: String,
+    env: Option<HashMap<String, String>>,
 }
 
 impl Runner {
@@ -108,6 +110,7 @@ impl Runner {
             args: config.args.clone(),
             fail_regex_template: "(?m)".to_owned() + config.fail_regex_template.as_str(),
             pass_regex_template: "(?m)".to_owned() + config.pass_regex_template.as_str(),
+            env: config.env.clone(),
         }
     }
 }
@@ -510,16 +513,21 @@ fn main() -> Result<()> {
                     runner.id, runner.command, runner.args
                 );
 
-                // TODO: Allow runners to set env
-                let runner_cmd = cmd(runner.command, &runner.args[..])
-                    .env("NO_COLOR", "1")
-                    .unchecked();
-                let reader = runner_cmd.stderr_to_stdout().reader()?;
+                let mut runner_cmd = cmd(runner.command, &runner.args[..]);
+
+                if let Some(env) = runner.env {
+                    for (key, value) in env {
+                        runner_cmd = runner_cmd.env(key, value);
+                    }
+                }
+
+                let runner_result = runner_cmd.unchecked();
+                let reader = runner_result.stderr_to_stdout().reader()?;
                 let output = &mut String::new();
                 BufReader::new(reader).read_to_string(output)?;
 
                 outputs.insert(runner_id.clone(), output.clone());
-                statuses.insert(runner_id.clone(), runner_cmd.run()?.status);
+                statuses.insert(runner_id.clone(), runner_result.run()?.status);
             }
 
             for (runner_id, status) in statuses {
