@@ -508,7 +508,7 @@ fn main() -> Result<()> {
         Commands::Validate(validate) => {
             let targets = validate
                 .target
-                .unwrap_or(vec!["pytest".to_string(), "bun".to_string()]);
+                .unwrap_or(config_meta.config.targets.keys().cloned().collect());
 
             for target in targets {
                 validate_target(&config_meta, &target, &env)?;
@@ -518,9 +518,13 @@ fn main() -> Result<()> {
             let mut statuses = IndexMap::<String, ExitStatus>::new();
             let mut outputs = HashMap::<String, String>::new();
 
-            let target_ids = run
-                .target
-                .unwrap_or(vec!["pytest".to_string(), "bun".to_string()]);
+            // If targets are specified via CLI, use the targets that have a runner defined
+            let target_ids: Vec<String> = run.target.unwrap_or(
+                (&config_meta.config.targets)
+                    .into_iter()
+                    .filter_map(|(id, config)| config.runner.as_ref().and(Some(id.clone())))
+                    .collect(),
+            );
 
             let targets: Result<Vec<Target>> = target_ids
                 .iter()
