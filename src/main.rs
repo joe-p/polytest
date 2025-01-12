@@ -164,7 +164,16 @@ impl Target {
                     runner: config
                         .runner
                         .as_ref()
-                        .map(|runner_config| Runner::from_config(&runner_config)),
+                        .map(|runner_config| Runner::from_config(&runner_config))
+                        .or(Some(Runner {
+                            env: None,
+                            command: "pytest".to_string(),
+                            args: vec!["-v".to_string()],
+                            fail_regex_template:
+                                r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
+                            pass_regex_template:
+                                r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
+                        })),
                 });
             }
             "bun" => {
@@ -187,7 +196,14 @@ impl Target {
                     runner: config
                         .runner
                         .as_ref()
-                        .map(|runner_config| Runner::from_config(&runner_config)),
+                        .map(|runner_config| Runner::from_config(&runner_config))
+                        .or(Some(Runner {
+                            env: None,
+                            command: "bun".to_string(),
+                            args: vec!["test".to_string()],
+                            fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
+                            pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()
+                        })),
                 });
             }
             "markdown" => {
@@ -441,8 +457,7 @@ fn main() -> Result<()> {
     for (target_id, target_config) in &config_meta.config.targets {
         let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
-        if let Some(runner_config) = &target_config.runner {
-            let runner = Runner::from_config(&runner_config);
+        if let Some(runner) = target.runner {
             templates.insert(
                 format!("{}_fail_regex", target_id),
                 runner.fail_regex_template,
@@ -518,25 +533,20 @@ fn main() -> Result<()> {
             let mut statuses = IndexMap::<String, ExitStatus>::new();
             let mut outputs = HashMap::<String, String>::new();
 
-            // If targets are specified via CLI, use the targets that have a runner defined
-            let target_ids: Vec<String> = run.target.unwrap_or(
-                (&config_meta.config.targets)
-                    .into_iter()
-                    .filter_map(|(id, config)| config.runner.as_ref().and(Some(id.clone())))
-                    .collect(),
-            );
+            let target_ids = run
+                .target
+                .unwrap_or(config_meta.config.targets.keys().cloned().collect());
 
-            let targets: Result<Vec<Target>> = target_ids
+            let targets: Result<Vec<Target>> = config_meta
+                .config
+                .targets
                 .iter()
-                .map(|id| {
-                    Target::from_config(
-                        config_meta.config.targets.get(id).context(format!(
-                            "Attempted to load target {}, but its config was not found",
-                            id
-                        ))?,
-                        id,
-                        &config_meta.root_dir,
-                    )
+                .filter_map(|(id, config)| {
+                    if target_ids.contains(id) {
+                        return Some(Target::from_config(config, id, &config_meta.root_dir));
+                    }
+
+                    return None;
                 })
                 .collect();
 
