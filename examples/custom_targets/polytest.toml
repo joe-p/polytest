@@ -4,7 +4,7 @@ name = "custom targets example"
 [target.pytest]
 out_dir = "./generated/pytest"
 
-[runner.pytest]
+[target.pytest.runner]
 command = "pytest"
 args = ["-v"]
 

@@ -3,7 +3,7 @@ name = "calculator example"
 [target.pytest]
 out_dir = "./generated/pytest"
 
-[runner.pytest]
+[target.pytest.runner]
 command = "pytest"
 args = ["-v"]
 fail_regex_template = '{{ file_name }}::test_{{ test_name }} FAILED'
@@ -12,7 +12,7 @@ pass_regex_template = '{{ file_name }}::test_{{ test_name }} PASSED'
 [target.bun]
 out_dir = "./generated/bun"
 
-[runner.bun]
+[target.bun.runner]
 command = "bun"
 args = ["test"]
 fail_regex_template = '\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$'

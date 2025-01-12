@@ -94,7 +94,6 @@ struct RunnerConfig {
 }
 
 struct Runner {
-    id: String,
     command: String,
     args: Vec<String>,
     fail_regex_template: String,
@@ -103,9 +102,8 @@ struct Runner {
 }
 
 impl Runner {
-    fn from_config(config: &RunnerConfig, id: &str) -> Self {
+    fn from_config(config: &RunnerConfig) -> Self {
         Self {
-            id: id.to_string(),
             command: config.command.clone(),
             args: config.args.clone(),
             fail_regex_template: "(?m)".to_owned() + config.fail_regex_template.as_str(),
@@ -127,6 +125,8 @@ struct Target {
     group_template: Option<String>,
     test_template: Option<String>,
     plan_template: Option<String>,
+
+    runner: Option<Runner>,
 }
 
 fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBuf> {
@@ -161,6 +161,10 @@ impl Target {
                         include_str!("../templates/pytest/test.py.jinja").to_string(),
                     ),
                     plan_template: None,
+                    runner: config
+                        .runner
+                        .as_ref()
+                        .map(|runner_config| Runner::from_config(&runner_config)),
                 });
             }
             "bun" => {
@@ -180,6 +184,10 @@ impl Target {
                     ),
                     test_template: Some(include_str!("../templates/bun/test.ts.jinja").to_string()),
                     plan_template: None,
+                    runner: config
+                        .runner
+                        .as_ref()
+                        .map(|runner_config| Runner::from_config(&runner_config)),
                 });
             }
             "markdown" => {
@@ -197,6 +205,7 @@ impl Target {
                     plan_template: Some(
                         include_str!("../templates/markdown/plan.md.jinja").to_string(),
                     ),
+                    runner: None,
                 });
             }
             _ => {
@@ -217,6 +226,10 @@ impl Target {
             group_template: None,
             test_template: None,
             plan_template: None,
+            runner: config
+                .runner
+                .as_ref()
+                .map(|runner_config| Runner::from_config(&runner_config)),
         };
 
         let template_dir = &config_root.join(
@@ -276,9 +289,6 @@ struct Config {
 
     #[serde(rename = "test")]
     tests: IndexMap<String, TestConfig>,
-
-    #[serde(rename = "runner")]
-    runners: HashMap<String, RunnerConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -289,6 +299,7 @@ struct TargetConfig {
     suite_file_name_template: Option<String>,
     plan_file_name_template: Option<String>,
     template_dir: Option<PathBuf>,
+    runner: Option<RunnerConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -410,9 +421,9 @@ struct Validate {
 
 #[derive(Args)]
 struct Run {
-    /// A test runner to execute
+    /// A target to execute the runner for
     #[arg(short, long)]
-    runner: Option<Vec<String>>,
+    target: Option<Vec<String>>,
 }
 
 fn main() -> Result<()> {
@@ -427,20 +438,21 @@ fn main() -> Result<()> {
 
     let mut templates: HashMap<String, String> = HashMap::new();
 
-    for (runner_id, runner_config) in &config_meta.config.runners {
-        let runner = Runner::from_config(runner_config, runner_id);
-        templates.insert(
-            format!("{}_fail_regex", runner_id),
-            runner.fail_regex_template,
-        );
-        templates.insert(
-            format!("{}_pass_regex", runner_id),
-            runner.pass_regex_template,
-        );
-    }
-
     for (target_id, target_config) in &config_meta.config.targets {
         let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
+
+        if let Some(runner_config) = &target_config.runner {
+            let runner = Runner::from_config(&runner_config);
+            templates.insert(
+                format!("{}_fail_regex", target_id),
+                runner.fail_regex_template,
+            );
+            templates.insert(
+                format!("{}_pass_regex", target_id),
+                runner.pass_regex_template,
+            );
+        }
+
         if let Some(suite_file_name_template) = &target.suite_file_name_template {
             templates.insert(
                 format!("{}_suite_file_name", target_id),
@@ -502,15 +514,37 @@ fn main() -> Result<()> {
                 validate_target(&config_meta, &target, &env)?;
             }
         }
-        Commands::Run(_run) => {
+        Commands::Run(run) => {
             let mut statuses = IndexMap::<String, ExitStatus>::new();
             let mut outputs = HashMap::<String, String>::new();
-            for (runner_id, runner_config) in &config_meta.config.runners {
-                let runner = Runner::from_config(runner_config, runner_id);
+
+            let target_ids = run
+                .target
+                .unwrap_or(vec!["pytest".to_string(), "bun".to_string()]);
+
+            let targets: Result<Vec<Target>> = target_ids
+                .iter()
+                .map(|id| {
+                    Target::from_config(
+                        config_meta.config.targets.get(id).context(format!(
+                            "Attempted to load target {}, but its config was not found",
+                            id
+                        ))?,
+                        id,
+                        &config_meta.root_dir,
+                    )
+                })
+                .collect();
+
+            for target in targets? {
+                let runner = target.runner.context(format!(
+                    "Attempted to execute runner for {}, but a runner is not configured",
+                    target.id
+                ))?;
 
                 println!(
                     "Running {}: {} {:?}",
-                    runner.id, runner.command, runner.args
+                    target.id, runner.command, runner.args
                 );
 
                 let mut runner_cmd = cmd(runner.command, &runner.args[..]);
@@ -526,32 +560,31 @@ fn main() -> Result<()> {
                 let output = &mut String::new();
                 BufReader::new(reader).read_to_string(output)?;
 
-                outputs.insert(runner_id.clone(), output.clone());
-                statuses.insert(runner_id.clone(), runner_result.run()?.status);
+                outputs.insert(target.id.clone(), output.clone());
+                statuses.insert(target.id.clone(), runner_result.run()?.status);
             }
 
-            for (runner_id, status) in statuses {
-                // TODO: Right now we assume target and runner ID are the same. We need to implement a way to map targets to runners
+            for (target_id, status) in statuses {
                 let target = Target::from_config(
-                    &config_meta.config.targets[&runner_id],
-                    &runner_id,
+                    &config_meta.config.targets[&target_id],
+                    &target_id,
                     &config_meta.root_dir,
                 )?;
 
                 let fail_regex_template = env
-                    .get_template(format!("{}_fail_regex", runner_id).as_str())
+                    .get_template(format!("{}_fail_regex", target_id).as_str())
                     .expect("template should exist since it was just added above");
 
                 let pass_regex_template = env
-                    .get_template(format!("{}_pass_regex", runner_id).as_str())
-                    .context(format!("could not find test pass regex for {}", runner_id))?;
+                    .get_template(format!("{}_pass_regex", target_id).as_str())
+                    .context(format!("could not find test pass regex for {}", target_id))?;
 
                 let mut fails: Vec<String> = Vec::new();
 
                 for (suite_id, suite_config) in &config_meta.config.suites {
                     let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
                     let suite_file_name = env
-                        .get_template(format!("{}_suite_file_name", runner_id).as_str())
+                        .get_template(format!("{}_suite_file_name", target_id).as_str())
                         .expect("template should exist since it was just added above")
                         .render(minijinja::context! {
                             suite => minijinja::Value::from_serialize(&suite),
@@ -569,16 +602,16 @@ fn main() -> Result<()> {
                                 })
                                 .context(format!(
                                     "failed to render fail regex for {}",
-                                    runner_id
+                                    target_id
                                 ))?;
 
                             let fail_regex = Regex::new(&fail_regex).unwrap();
 
-                            if fail_regex.is_match(&outputs[&runner_id]) {
+                            if fail_regex.is_match(&outputs[&target_id]) {
                                 fails.push(
                                     format!(
                                         "  {} > {} > {} > {}: FAILED",
-                                        runner_id, suite.name, group.name, test.name
+                                        target_id, suite.name, group.name, test.name
                                     )
                                     .to_string(),
                                 );
@@ -592,16 +625,16 @@ fn main() -> Result<()> {
                                     })
                                     .context(format!(
                                         "failed to render pass regex for {}",
-                                        runner_id
+                                        target_id
                                     ))?;
 
                                 let pass_regex = Regex::new(&pass_regex).unwrap();
 
-                                if !pass_regex.is_match(&outputs[&runner_id]) {
+                                if !pass_regex.is_match(&outputs[&target_id]) {
                                     fails.push(
                                         format!(
                                             "  {} > {} > {} > {}: UNKNOWN",
-                                            runner_id, suite.name, group.name, test.name
+                                            target_id, suite.name, group.name, test.name
                                         )
                                         .to_string(),
                                     );
@@ -612,9 +645,9 @@ fn main() -> Result<()> {
                 }
                 // If the command was exit 0 AND there were no FAILED or UNKNOWN test results
                 if status.success() && fails.is_empty() {
-                    println!("{} ran succesfully!", runner_id);
+                    println!("{} ran succesfully!", target_id);
                 } else {
-                    eprintln!("{} failed to run succesfully ({})", runner_id, status);
+                    eprintln!("{} failed to run succesfully ({})", target_id, status);
                     for failure in &fails {
                         eprintln!("{failure}")
                     }
