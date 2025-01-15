@@ -440,6 +440,11 @@ struct Run {
     /// A target to execute the runner for
     #[arg(short, long)]
     target: Option<Vec<String>>,
+
+    /// Do not parse the results to determine if all test cases were ran and instead just rely on
+    /// exit status of the runner(s)
+    #[arg(long)]
+    no_parse: bool,
 }
 
 fn main() -> Result<()> {
@@ -595,42 +600,20 @@ fn main() -> Result<()> {
 
                 let mut fails: Vec<String> = Vec::new();
 
-                for (suite_id, suite_config) in &config_meta.config.suites {
-                    let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
-                    let suite_file_name = env
-                        .get_template(format!("{}_suite_file_name", target_id).as_str())
-                        .expect("template should exist since it was just added above")
-                        .render(minijinja::context! {
-                            suite => minijinja::Value::from_serialize(&suite),
-                        })
-                        .context(format!("failed to render file name for {}", target.id))?;
+                if !run.no_parse {
+                    for (suite_id, suite_config) in &config_meta.config.suites {
+                        let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
+                        let suite_file_name = env
+                            .get_template(format!("{}_suite_file_name", target_id).as_str())
+                            .expect("template should exist since it was just added above")
+                            .render(minijinja::context! {
+                                suite => minijinja::Value::from_serialize(&suite),
+                            })
+                            .context(format!("failed to render file name for {}", target.id))?;
 
-                    for group in &suite.groups {
-                        for test in &group.tests {
-                            let fail_regex = fail_regex_template
-                                .render(minijinja::context! {
-                                    file_name => minijinja::Value::from(&suite_file_name),
-                                    suite_name => minijinja::Value::from(&suite.name),
-                                    group_name => minijinja::Value::from(&group.name),
-                                    test_name => minijinja::Value::from(&test.name),
-                                })
-                                .context(format!(
-                                    "failed to render fail regex for {}",
-                                    target_id
-                                ))?;
-
-                            let fail_regex = Regex::new(&fail_regex).unwrap();
-
-                            if fail_regex.is_match(&outputs[&target_id]) {
-                                fails.push(
-                                    format!(
-                                        "  {} > {} > {} > {}: FAILED",
-                                        target_id, suite.name, group.name, test.name
-                                    )
-                                    .to_string(),
-                                );
-                            } else {
-                                let pass_regex = pass_regex_template
+                        for group in &suite.groups {
+                            for test in &group.tests {
+                                let fail_regex = fail_regex_template
                                     .render(minijinja::context! {
                                         file_name => minijinja::Value::from(&suite_file_name),
                                         suite_name => minijinja::Value::from(&suite.name),
@@ -638,20 +621,44 @@ fn main() -> Result<()> {
                                         test_name => minijinja::Value::from(&test.name),
                                     })
                                     .context(format!(
-                                        "failed to render pass regex for {}",
+                                        "failed to render fail regex for {}",
                                         target_id
                                     ))?;
 
-                                let pass_regex = Regex::new(&pass_regex).unwrap();
+                                let fail_regex = Regex::new(&fail_regex).unwrap();
 
-                                if !pass_regex.is_match(&outputs[&target_id]) {
+                                if fail_regex.is_match(&outputs[&target_id]) {
                                     fails.push(
                                         format!(
-                                            "  {} > {} > {} > {}: UNKNOWN",
+                                            "  {} > {} > {} > {}: FAILED",
                                             target_id, suite.name, group.name, test.name
                                         )
                                         .to_string(),
                                     );
+                                } else {
+                                    let pass_regex = pass_regex_template
+                                        .render(minijinja::context! {
+                                            file_name => minijinja::Value::from(&suite_file_name),
+                                            suite_name => minijinja::Value::from(&suite.name),
+                                            group_name => minijinja::Value::from(&group.name),
+                                            test_name => minijinja::Value::from(&test.name),
+                                        })
+                                        .context(format!(
+                                            "failed to render pass regex for {}",
+                                            target_id
+                                        ))?;
+
+                                    let pass_regex = Regex::new(&pass_regex).unwrap();
+
+                                    if !pass_regex.is_match(&outputs[&target_id]) {
+                                        fails.push(
+                                            format!(
+                                                "  {} > {} > {} > {}: UNKNOWN",
+                                                target_id, suite.name, group.name, test.name
+                                            )
+                                            .to_string(),
+                                        );
+                                    }
                                 }
                             }
                         }
