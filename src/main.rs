@@ -137,6 +137,8 @@ fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBu
         .and_then(|path| path.map_err(|e| e.into()))
 }
 
+const TARGETS_WITH_DEFAULT_RUNNERS: [&str; 2] = ["pytest", "bun"];
+
 impl Target {
     fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
         match id {
@@ -538,24 +540,30 @@ fn main() -> Result<()> {
             let mut statuses = IndexMap::<String, ExitStatus>::new();
             let mut outputs = HashMap::<String, String>::new();
 
-            let target_ids = run
-                .target
-                .unwrap_or(config_meta.config.targets.keys().cloned().collect());
-
-            let targets: Result<Vec<Target>> = config_meta
+            let targets = config_meta
                 .config
                 .targets
                 .iter()
-                .filter_map(|(id, config)| {
-                    if target_ids.contains(id) {
-                        return Some(Target::from_config(config, id, &config_meta.root_dir));
+                .filter(|(id, config)| {
+                    // if the --target flag was used get the targets passed in
+                    if let Some(target_ids) = &run.target {
+                        target_ids.contains(id)
+                    // otherwise get all the targets that have a runner defined
+                    } else {
+                        if config.runner.is_some()
+                            || TARGETS_WITH_DEFAULT_RUNNERS.contains(&id.as_str())
+                        {
+                            return true;
+                        } else {
+                            println!("No runner configured for {id}. Skipping...");
+                            return false;
+                        }
                     }
-
-                    return None;
                 })
-                .collect();
+                .map(|(id, config)| Target::from_config(config, id, &config_meta.root_dir))
+                .collect::<Result<Vec<Target>>>()?;
 
-            for target in targets? {
+            for target in targets {
                 let runner = target.runner.context(format!(
                     "Attempted to execute runner for {}, but a runner is not configured",
                     target.id
