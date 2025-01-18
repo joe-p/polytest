@@ -4,10 +4,6 @@ name = "custom targets example"
 [target.pytest]
 out_dir = "./generated/pytest"
 
-[target.pytest.runner]
-command = "pytest"
-args = ["-v"]
-
 # A custom target must define either of the following sets of options:
 # 
 # For test generation targets, which may have multiple suite files that are updated each time `polytest generate` is ran:
