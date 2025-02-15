@@ -91,6 +91,7 @@ struct RunnerConfig {
     fail_regex_template: String,
     pass_regex_template: String,
     env: Option<HashMap<String, String>>,
+    work_dir: Option<PathBuf>,
 }
 
 struct Runner {
@@ -99,6 +100,7 @@ struct Runner {
     fail_regex_template: String,
     pass_regex_template: String,
     env: Option<HashMap<String, String>>,
+    work_dir: Option<PathBuf>,
 }
 
 impl Runner {
@@ -109,6 +111,7 @@ impl Runner {
             fail_regex_template: "(?m)".to_owned() + config.fail_regex_template.as_str(),
             pass_regex_template: "(?m)".to_owned() + config.pass_regex_template.as_str(),
             env: config.env.clone(),
+            work_dir: config.work_dir.clone(),
         }
     }
 }
@@ -175,6 +178,7 @@ impl Target {
                                 r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
                             pass_regex_template:
                                 r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
+                            work_dir: None,
                         })),
                 });
             }
@@ -204,7 +208,8 @@ impl Target {
                             command: "bun".to_string(),
                             args: vec!["test".to_string()],
                             fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
-                            pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()
+                            pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
+                            work_dir: None,
                         })),
                 });
             }
@@ -575,6 +580,10 @@ fn main() -> Result<()> {
                 );
 
                 let mut runner_cmd = cmd(runner.command, &runner.args[..]);
+
+                if let Some(work_dir) = &runner.work_dir {
+                    runner_cmd = runner_cmd.dir(config_meta.root_dir.join(work_dir));
+                }
 
                 if let Some(env) = runner.env {
                     for (key, value) in env {

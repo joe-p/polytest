@@ -1,0 +1,9 @@
+# frozen_string_literal: true
+
+require 'test_helper'
+
+# {{ suite.name }}
+class Test{{ suite.name | convert_case('Pascal') }} < Minitest::Test
+  # Polytest Suite: {{ suite.name }}
+end
+
