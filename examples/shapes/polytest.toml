@@ -1,0 +1,69 @@
+name = "shapes example"
+
+# Test Case Definition
+
+## Suites
+
+[suite.circle]
+desc = "A circle is a shape defined by all points on a plane that are equidistant from a given point"
+groups = ["shape", "circle"]
+
+[suite.rectangle]
+desc = "A rectangle is a polygon with four right angles"
+groups = ["shape", "polygon", "rectangle"]
+
+[suite.triangle]
+desc = "A triangle is a polygon with three edges"
+groups = ["shape", "polygon"]
+
+## Tests
+
+[test.area]
+desc = "A shape should be able to accurately calculate its area"
+group = "shape"
+
+[test.perimeter]
+desc = "A shape should be able to accurately calculate its perimeter (or circumference)"
+group = "shape"
+
+[test.vertex_count]
+desc = "A polygon should accurately count the number of verticies it contains"
+group = "polygon"
+
+[test.edge_count]
+desc = "A polygon should accurately count the number of edges it contains"
+group = "polygon"
+
+[test.is_square]
+desc = "A rectangle should be able to accurately determine if it is a square"
+group = "rectangle"
+
+[test.radius]
+desc = "A circle should be able to accurately calculate its radius"
+group = "circle"
+
+[test.diameter]
+desc = "A circle should be able to accurately calculate its diameter"
+group = "circle"
+
+## Groups
+
+[group.shape]
+desc = "A shape is a polygon OR a circle"
+
+[group.polygon]
+desc = "A polygon is a shape with at least 3 edges"
+
+[group.circle]
+desc = "Tests that only correspond to circle"
+
+[group.rectangle]
+desc = "A rectangle is a polygon with four right angles"
+
+# Targets
+
+[target.pytest]
+out_dir = "./python/tests"
+
+[target.bun]
+out_dir = "./bun/__tests__"
