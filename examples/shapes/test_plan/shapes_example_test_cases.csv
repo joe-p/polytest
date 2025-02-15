@@ -1,0 +1,8 @@
+name,description
+area,A shape should be able to accurately calculate its area
+perimeter,A shape should be able to accurately calculate its perimeter (or circumference)
+vertex_count,A polygon should accurately count the number of verticies it contains
+edge_count,A polygon should accurately count the number of edges it contains
+is_square,A rectangle should be able to accurately determine if it is a square
+radius,A circle should be able to accurately calculate its radius
+diameter,A circle should be able to accurately calculate its diameter

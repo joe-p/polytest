@@ -60,7 +60,7 @@ desc = "Tests that only correspond to circle"
 [group.rectangle]
 desc = "A rectangle is a polygon with four right angles"
 
-# Targets
+# Test Targets
 
 [target.pytest]
 out_dir = "./implementations/python/tests"
@@ -68,10 +68,15 @@ out_dir = "./implementations/python/tests"
 [target.bun]
 out_dir = "./implementations/bun/__tests__"
 
-## Custom Target
+# Test Plan Target
+
+[target.markdown]
+out_dir = "./test_plan"
+
+# Custom Test Target
 
 [target.minitest_unit]
-out_dir = "./implementations/ruby/tests"
+out_dir = "./implementations/ruby/test"
 
 suite_file_name_template = "test_{{ suite.name | convert_case('Snake') }}.rb"
 test_regex_template = "def test_{{ name | convert_case('Snake') }}"
@@ -85,3 +90,10 @@ pass_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ tes
 work_dir = "./implementations/ruby"
 command = "bundle"
 args = ["exec", "rake", "test", "A='--verbose'"]
+
+# Custom Test Plan Target
+
+[target.test_cases_csv]
+out_dir = "./test_plan"
+plan_file_name_template = "{{ name | convert_case('Snake') }}_test_cases.csv"
+template_dir = "./templates/test_cases_csv"
