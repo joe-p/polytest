@@ -1,6 +1,0 @@
-
-
-@pytest.mark.group_{{ group_name | convert_case('Snake') }}
-def test_{{ test.name | convert_case('Snake') }}({{ group_name | convert_case('Snake') }}: {{ group_name | convert_case('Pascal') }}):
-    """{{ test.desc }}"""
-    raise Exception("TEST NOT IMPLEMENTED")

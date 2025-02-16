@@ -68,10 +68,10 @@ out_dir = "./implementations/python/tests"
 [target.bun]
 out_dir = "./implementations/bun/__tests__"
 
-# Test Plan Target
+# Document
 
-[target.markdown]
-out_dir = "./test_plan"
+[document.markdown]
+out_file = "./documents/plan.md"
 
 # Custom Test Target
 
@@ -91,9 +91,8 @@ work_dir = "./implementations/ruby"
 command = "bundle"
 args = ["exec", "rake", "test", "A='--verbose'"]
 
-# Custom Test Plan Target
+# Custom Document
 
-[target.test_cases_csv]
-out_dir = "./test_plan"
-plan_file_name_template = "{{ name | convert_case('Snake') }}_test_cases.csv"
-template_dir = "./templates/test_cases_csv"
+[document.test_cases_csv]
+out_file = "./documents/test_cases.csv"
+template = "./templates/test_cases.csv.jinja"

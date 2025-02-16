@@ -120,16 +120,53 @@ struct Target {
     id: String,
     out_dir: PathBuf,
     test_regex_template: Option<String>,
-
     suite_file_name_template: Option<String>,
-    plan_file_name_template: Option<String>,
-
     suite_template: Option<String>,
     group_template: Option<String>,
     test_template: Option<String>,
-    plan_template: Option<String>,
-
     runner: Option<Runner>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct DocumentConfig {
+    out_file: PathBuf,
+    template: Option<String>,
+}
+
+struct Document {
+    out_file: PathBuf,
+    template: String,
+}
+
+impl Document {
+    fn from_config(config: &DocumentConfig, id: &str, config_root: &Path) -> Result<Self> {
+        match id {
+            "markdown" => {
+                return Ok(Self {
+                    out_file: config.out_file.clone(),
+                    template: config.template.clone().unwrap_or_else(|| {
+                        include_str!("../templates/markdown/plan.md.jinja").to_string()
+                    }),
+                });
+            }
+            _ => {
+                let template_path = config_root.join(
+                    config
+                        .template
+                        .clone()
+                        .context("template is required for custom documents")?,
+                );
+
+                let template = std::fs::read_to_string(template_path)
+                    .context(format!("failed to read template file for {}", id))?;
+
+                return Ok(Self {
+                    out_file: config.out_file.clone(),
+                    template,
+                });
+            }
+        }
+    }
 }
 
 fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBuf> {
@@ -151,7 +188,6 @@ impl Target {
                     test_regex_template: Some(
                         r"(?m)def test_{{ name | convert_case('Snake') }}\(".to_string(),
                     ),
-                    plan_file_name_template: None,
                     suite_file_name_template: Some(
                         "test_{{ suite.name | convert_case('Snake') }}.py".to_string(),
                     ),
@@ -165,7 +201,6 @@ impl Target {
                     test_template: Some(
                         include_str!("../templates/pytest/test.py.jinja").to_string(),
                     ),
-                    plan_template: None,
                     runner: config
                         .runner
                         .as_ref()
@@ -186,7 +221,6 @@ impl Target {
                 return Ok(Self {
                     id: id.to_string(),
                     test_regex_template: Some(r#"(?m)test\("{{ name }}","#.to_string()),
-                    plan_file_name_template: None,
                     suite_file_name_template: Some(
                         "{{ suite.name | convert_case('Snake') }}.test.ts".to_string(),
                     ),
@@ -198,7 +232,6 @@ impl Target {
                         include_str!("../templates/bun/group.ts.jinja").to_string(),
                     ),
                     test_template: Some(include_str!("../templates/bun/test.ts.jinja").to_string()),
-                    plan_template: None,
                     runner: config
                         .runner
                         .as_ref()
@@ -211,24 +244,6 @@ impl Target {
                             pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
                             work_dir: None,
                         })),
-                });
-            }
-            "markdown" => {
-                return Ok(Self {
-                    id: id.to_string(),
-                    test_regex_template: None,
-                    plan_file_name_template: Some(
-                        "{{ name | convert_case('Snake') }}.md".to_string(),
-                    ),
-                    suite_file_name_template: None,
-                    out_dir: config_root.join(&config.out_dir),
-                    suite_template: None,
-                    group_template: None,
-                    test_template: None,
-                    plan_template: Some(
-                        include_str!("../templates/markdown/plan.md.jinja").to_string(),
-                    ),
-                    runner: None,
                 });
             }
             _ => {
@@ -244,11 +259,9 @@ impl Target {
                 .map(|t| "(?m)".to_owned() + t.as_str()),
             out_dir: config_root.join(&config.out_dir),
             suite_file_name_template: config.suite_file_name_template.clone(),
-            plan_file_name_template: config.plan_file_name_template.clone(),
             suite_template: None,
             group_template: None,
             test_template: None,
-            plan_template: None,
             runner: config
                 .runner
                 .as_ref()
@@ -282,14 +295,7 @@ impl Target {
             );
         }
 
-        if let Ok(plan_file) = find_template_file(template_dir, "plan*") {
-            target.plan_template = Some(
-                std::fs::read_to_string(plan_file)
-                    .context(format!("failed to read plan template file for {}", id))?,
-            );
-        }
-
-        if target.suite_template.is_none() && target.plan_template.is_none() {
+        if target.suite_template.is_none() {
             return Err(anyhow!("No suite or plan template provided"));
         }
 
@@ -300,6 +306,9 @@ impl Target {
 #[derive(Deserialize, Debug, Clone)]
 struct Config {
     name: String,
+
+    #[serde(rename = "document")]
+    documents: HashMap<String, DocumentConfig>,
 
     #[serde(rename = "target")]
     targets: HashMap<String, TargetConfig>,
@@ -320,7 +329,6 @@ struct TargetConfig {
 
     test_regex_template: Option<String>,
     suite_file_name_template: Option<String>,
-    plan_file_name_template: Option<String>,
     template_dir: Option<PathBuf>,
     runner: Option<RunnerConfig>,
 }
@@ -433,6 +441,10 @@ struct Generate {
     /// A target to generate tests for
     #[arg(short, long)]
     target: Option<Vec<String>>,
+
+    /// A document to generate
+    #[arg(short, long)]
+    document: Option<Vec<String>>,
 }
 
 #[derive(Args)]
@@ -466,6 +478,11 @@ fn main() -> Result<()> {
 
     let mut templates: HashMap<String, String> = HashMap::new();
 
+    for (document_id, document_config) in &config_meta.config.documents {
+        let document = Document::from_config(document_config, document_id, &config_meta.root_dir)?;
+        templates.insert(format!("{}_document", document_id), document.template);
+    }
+
     for (target_id, target_config) in &config_meta.config.targets {
         let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
@@ -487,13 +504,6 @@ fn main() -> Result<()> {
             );
         }
 
-        if let Some(plan_file_name_template) = &target.plan_file_name_template {
-            templates.insert(
-                format!("{}_plan_file_name", target_id),
-                plan_file_name_template.to_string(),
-            );
-        }
-
         if let Some(test_regex_template) = &target.test_regex_template {
             templates.insert(
                 format!("{}_test_regex", target_id),
@@ -512,10 +522,6 @@ fn main() -> Result<()> {
         if let Some(test_template) = &target.test_template {
             templates.insert(format!("{}_test", target_id), test_template.to_string());
         }
-
-        if let Some(plan_template) = &target.plan_template {
-            templates.insert(format!("{}_plan", target_id), plan_template.to_string());
-        }
     }
 
     templates.iter().for_each(|(name, template)| {
@@ -528,8 +534,16 @@ fn main() -> Result<()> {
                 .target
                 .unwrap_or(config_meta.config.targets.keys().cloned().collect());
 
+            let documents = generate
+                .document
+                .unwrap_or(config_meta.config.documents.keys().cloned().collect());
+
             for target in targets {
                 generate_target(&config_meta, &target, &env)?;
+            }
+
+            for document in documents {
+                generate_document(&config_meta, &document, &env)?;
             }
         }
         Commands::Validate(validate) => {
@@ -876,13 +890,7 @@ fn generate_target(
 
     let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
 
-    if target.suite_template.is_some() {
-        generate_suite(config_meta, &target, &env)?;
-    }
-
-    if target.plan_template.is_some() {
-        generate_plan(config_meta, &target, &env)?;
-    }
+    generate_suite(config_meta, &target, &env)?;
 
     Ok(())
 }
@@ -1021,11 +1029,19 @@ fn generate_suite(
     Ok(())
 }
 
-fn generate_plan(
+fn generate_document(
     config_meta: &ConfigMeta,
-    target: &Target,
+    doc_id: &str,
     env: &minijinja::Environment,
 ) -> Result<()> {
+    let document_config = config_meta
+        .config
+        .documents
+        .get(doc_id)
+        .context(format!("document {} does not exist", doc_id))?;
+
+    let document = Document::from_config(document_config, doc_id, &config_meta.root_dir)?;
+
     let config = &config_meta.config;
     let suite_values: Vec<Suite> = config
         .suites
@@ -1046,38 +1062,27 @@ fn generate_plan(
         .collect();
 
     let template = env
-        .get_template(format!("{}_plan", target.id).as_str())
-        .expect("plan template should have been adedd by generate_target");
+        .template_from_str(&document.template)
+        .context(format!("failed to load template for {}", doc_id))?;
 
     let content = template
         .render(minijinja::context! {
+            name => minijinja::Value::from(&config.name),
             suites => minijinja::Value::from_serialize(&suite_values),
             groups => minijinja::Value::from_serialize(&group_values),
             tests => minijinja::Value::from_serialize(&test_values)
         })
-        .context(format!("failed to render plan for {}", target.id))?;
+        .context(format!("failed to render document for {}", doc_id))?;
 
-    let file_name_template = env
-        .get_template(format!("{}_plan_file_name", target.id).as_str())
-        .expect("file name template should have been adedd by generate_target");
-
-    let file_name = file_name_template
-        .render(minijinja::context! {
-            name => minijinja::Value::from(&config.name),
-        })
-        .context(format!("failed to render file name for {}", target.id))?;
-
-    let file_path = target.out_dir.join(file_name);
-
-    if let Some(parent) = file_path.parent() {
+    if let Some(parent) = document.out_file.parent() {
         std::fs::create_dir_all(parent).context(format!(
             "failed to create directory for {}",
             parent.display()
         ))?;
     }
 
-    std::fs::write(file_path, content)
-        .context(format!("failed to write plan for {}", target.id))?;
+    std::fs::write(document.out_file, content)
+        .context(format!("failed to write document for {}", doc_id))?;
 
     Ok(())
 }
