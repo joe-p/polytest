@@ -75,7 +75,7 @@ out_file = "./documents/plan.md"
 
 # Custom Test Target
 
-[target.minitest_unit]
+[custom_target.minitest_unit]
 out_dir = "./implementations/ruby/test"
 
 suite_file_name_template = "test_{{ suite.name | convert_case('Snake') }}.rb"
@@ -83,11 +83,10 @@ test_regex_template = "def test_{{ name | convert_case('Snake') }}"
 
 template_dir = "./templates/minitest_unit"
 
-[target.minitest_unit.runner]
+[custom_target.minitest_unit.runner]
 fail_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)"
 pass_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
 
-work_dir = "./implementations/ruby"
 command = "bundle"
 args = ["exec", "rake", "test", "A='--verbose'"]
 
