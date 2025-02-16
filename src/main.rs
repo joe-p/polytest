@@ -94,6 +94,7 @@ struct RunnerConfig {
     work_dir: Option<PathBuf>,
 }
 
+#[derive(Deserialize, Debug, Clone)]
 struct Runner {
     command: String,
     args: Vec<String>,
@@ -116,6 +117,7 @@ impl Runner {
     }
 }
 
+#[derive(Deserialize, Debug, Clone)]
 struct Target {
     id: String,
     out_dir: PathBuf,
@@ -177,48 +179,52 @@ fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBu
         .and_then(|path| path.map_err(|e| e.into()))
 }
 
-const TARGETS_WITH_DEFAULT_RUNNERS: [&str; 2] = ["pytest", "bun"];
-
 impl Target {
-    fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
-        match id {
-            "pytest" => {
-                return Ok(Self {
-                    id: id.to_string(),
-                    test_regex_template: Some(
-                        r"(?m)def test_{{ name | convert_case('Snake') }}\(".to_string(),
-                    ),
-                    suite_file_name_template: Some(
-                        "test_{{ suite.name | convert_case('Snake') }}.py".to_string(),
-                    ),
-                    out_dir: config_root.join(&config.out_dir),
-                    suite_template: Some(
-                        include_str!("../templates/pytest/suite.py.jinja").to_string(),
-                    ),
-                    group_template: Some(
-                        include_str!("../templates/pytest/group.py.jinja").to_string(),
-                    ),
-                    test_template: Some(
-                        include_str!("../templates/pytest/test.py.jinja").to_string(),
-                    ),
-                    runner: config
-                        .runner
-                        .as_ref()
-                        .map(|runner_config| Runner::from_config(&runner_config))
-                        .or(Some(Runner {
-                            env: None,
-                            command: "pytest".to_string(),
-                            args: vec!["-v".to_string()],
-                            fail_regex_template:
-                                r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
-                            pass_regex_template:
-                                r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
-                            work_dir: None,
-                        })),
-                });
-            }
-            "bun" => {
-                return Ok(Self {
+    fn from_config(
+        config: &TargetConfig,
+        id: &str,
+        config_root: &Path,
+        is_custom: bool,
+    ) -> Result<Self> {
+        if !is_custom {
+            match id {
+                "pytest" => {
+                    return Ok(Self {
+                        id: id.to_string(),
+                        test_regex_template: Some(
+                            r"(?m)def test_{{ name | convert_case('Snake') }}\(".to_string(),
+                        ),
+                        suite_file_name_template: Some(
+                            "test_{{ suite.name | convert_case('Snake') }}.py".to_string(),
+                        ),
+                        out_dir: config_root.join(&config.out_dir),
+                        suite_template: Some(
+                            include_str!("../templates/pytest/suite.py.jinja").to_string(),
+                        ),
+                        group_template: Some(
+                            include_str!("../templates/pytest/group.py.jinja").to_string(),
+                        ),
+                        test_template: Some(
+                            include_str!("../templates/pytest/test.py.jinja").to_string(),
+                        ),
+                        runner: config
+                            .runner
+                            .as_ref()
+                            .map(|runner_config| Runner::from_config(&runner_config))
+                            .or(Some(Runner {
+                                env: None,
+                                command: "pytest".to_string(),
+                                args: vec!["-v".to_string()],
+                                fail_regex_template:
+                                    r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
+                                pass_regex_template:
+                                    r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
+                                work_dir: None,
+                            })),
+                    });
+                }
+                "bun" => {
+                    return Ok(Self {
                     id: id.to_string(),
                     test_regex_template: Some(r#"(?m)test\("{{ name }}","#.to_string()),
                     suite_file_name_template: Some(
@@ -245,11 +251,12 @@ impl Target {
                             work_dir: None,
                         })),
                 });
-            }
-            _ => {
-                println!("Loading custom target: {}", id);
-            }
-        };
+                }
+                _ => {
+                    anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id)
+                }
+            };
+        }
 
         let mut target = Self {
             id: id.to_string(),
@@ -313,6 +320,9 @@ struct Config {
     #[serde(rename = "target")]
     targets: HashMap<String, TargetConfig>,
 
+    #[serde(rename = "custom_target")]
+    custom_targets: HashMap<String, CustomTargetConfig>,
+
     #[serde(rename = "suite")]
     suites: IndexMap<String, SuiteConfig>,
 
@@ -331,6 +341,28 @@ struct TargetConfig {
     suite_file_name_template: Option<String>,
     template_dir: Option<PathBuf>,
     runner: Option<RunnerConfig>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+struct CustomTargetConfig {
+    out_dir: PathBuf,
+
+    test_regex_template: String,
+    suite_file_name_template: String,
+    template_dir: PathBuf,
+    runner: RunnerConfig,
+}
+
+impl From<CustomTargetConfig> for TargetConfig {
+    fn from(config: CustomTargetConfig) -> Self {
+        Self {
+            out_dir: config.out_dir,
+            test_regex_template: Some(config.test_regex_template),
+            suite_file_name_template: Some(config.suite_file_name_template),
+            template_dir: Some(config.template_dir),
+            runner: Some(config.runner),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -483,44 +515,66 @@ fn main() -> Result<()> {
         templates.insert(format!("{}_document", document_id), document.template);
     }
 
-    for (target_id, target_config) in &config_meta.config.targets {
-        let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
+    for target_id in config_meta.config.targets.keys() {
+        if config_meta.config.custom_targets.contains_key(target_id) {
+            return Err(anyhow!("{} is defined as both a target and custom_target, please change the name of the custom_target", target_id));
+        }
+    }
 
-        if let Some(runner) = target.runner {
+    let all_targets = config_meta
+        .config
+        .targets
+        .clone()
+        .into_iter()
+        .map(|(id, config)| Target::from_config(&config, &id, &config_meta.root_dir, false))
+        .chain(
+            config_meta
+                .config
+                .custom_targets
+                .clone()
+                .into_iter()
+                .map(|(id, config)| {
+                    Target::from_config(&config.into(), &id, &config_meta.root_dir, true)
+                }),
+        )
+        .collect::<Result<Vec<Target>>>()?;
+
+    for target in &all_targets {
+        if let Some(runner) = &target.runner {
             templates.insert(
-                format!("{}_fail_regex", target_id),
-                runner.fail_regex_template,
+                format!("{}_fail_regex", target.id),
+                runner.fail_regex_template.clone(),
             );
             templates.insert(
-                format!("{}_pass_regex", target_id),
-                runner.pass_regex_template,
+                format!("{}_pass_regex", target.id),
+                runner.pass_regex_template.clone(),
             );
         }
 
         if let Some(suite_file_name_template) = &target.suite_file_name_template {
             templates.insert(
-                format!("{}_suite_file_name", target_id),
+                format!("{}_suite_file_name", target.id),
                 suite_file_name_template.to_string(),
             );
         }
 
         if let Some(test_regex_template) = &target.test_regex_template {
             templates.insert(
-                format!("{}_test_regex", target_id),
+                format!("{}_test_regex", target.id),
                 test_regex_template.to_string(),
             );
         }
 
         if let Some(suite_template) = &target.suite_template {
-            templates.insert(format!("{}_suite", target_id), suite_template.to_string());
+            templates.insert(format!("{}_suite", target.id), suite_template.to_string());
         }
 
         if let Some(group_template) = &target.group_template {
-            templates.insert(format!("{}_group", target_id), group_template.to_string());
+            templates.insert(format!("{}_group", target.id), group_template.to_string());
         }
 
         if let Some(test_template) = &target.test_template {
-            templates.insert(format!("{}_test", target_id), test_template.to_string());
+            templates.insert(format!("{}_test", target.id), test_template.to_string());
         }
     }
 
@@ -530,9 +584,14 @@ fn main() -> Result<()> {
 
     match parsed.command {
         Commands::Generate(generate) => {
-            let targets = generate
-                .target
-                .unwrap_or(config_meta.config.targets.keys().cloned().collect());
+            let targets = match generate.target {
+                Some(target_ids) => all_targets
+                    .into_iter()
+                    .filter(|target| target_ids.contains(&target.id))
+                    .collect(),
+
+                None => all_targets,
+            };
 
             let documents = generate
                 .document
@@ -547,9 +606,14 @@ fn main() -> Result<()> {
             }
         }
         Commands::Validate(validate) => {
-            let targets = validate
-                .target
-                .unwrap_or(config_meta.config.targets.keys().cloned().collect());
+            let targets = match validate.target {
+                Some(target_ids) => all_targets
+                    .into_iter()
+                    .filter(|target| target_ids.contains(&target.id))
+                    .collect(),
+
+                None => all_targets,
+            };
 
             for target in targets {
                 validate_target(&config_meta, &target, &env)?;
@@ -559,31 +623,17 @@ fn main() -> Result<()> {
             let mut statuses = IndexMap::<String, ExitStatus>::new();
             let mut outputs = HashMap::<String, String>::new();
 
-            let targets = config_meta
-                .config
-                .targets
-                .iter()
-                .filter(|(id, config)| {
-                    // if the --target flag was used get the targets passed in
-                    if let Some(target_ids) = &run.target {
-                        target_ids.contains(id)
-                    // otherwise get all the targets that have a runner defined
-                    } else {
-                        if config.runner.is_some()
-                            || TARGETS_WITH_DEFAULT_RUNNERS.contains(&id.as_str())
-                        {
-                            return true;
-                        } else {
-                            println!("No runner configured for {id}. Skipping...");
-                            return false;
-                        }
-                    }
-                })
-                .map(|(id, config)| Target::from_config(config, id, &config_meta.root_dir))
-                .collect::<Result<Vec<Target>>>()?;
+            let targets = match run.target {
+                Some(target_ids) => all_targets
+                    .into_iter()
+                    .filter(|target| target_ids.contains(&target.id))
+                    .collect(),
 
-            for target in targets {
-                let runner = target.runner.context(format!(
+                None => all_targets,
+            };
+
+            for target in &targets {
+                let runner = target.runner.clone().context(format!(
                     "Attempted to execute runner for {}, but a runner is not configured",
                     target.id
                 ))?;
@@ -615,11 +665,10 @@ fn main() -> Result<()> {
             }
 
             for (target_id, status) in statuses {
-                let target = Target::from_config(
-                    &config_meta.config.targets[&target_id],
-                    &target_id,
-                    &config_meta.root_dir,
-                )?;
+                let target = targets
+                    .iter()
+                    .find(|t| t.id == target_id)
+                    .expect("the target should exist because the status exists");
 
                 let fail_regex_template = env
                     .get_template(format!("{}_fail_regex", target_id).as_str())
@@ -713,17 +762,9 @@ fn main() -> Result<()> {
 
 fn validate_target(
     config_meta: &ConfigMeta,
-    target_id: &str,
+    target: &Target,
     env: &minijinja::Environment,
 ) -> Result<()> {
-    let target_config = config_meta
-        .config
-        .targets
-        .get(target_id)
-        .context(format!("could not find config for {}. Add [target.{}] to your configuration file with the required values", target_id, target_id))?;
-
-    let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
-
     let file_template_name = format!("{}_suite_file_name", target.id);
 
     let suites: Vec<Suite> = config_meta
@@ -879,17 +920,9 @@ fn find_test(
 
 fn generate_target(
     config_meta: &ConfigMeta,
-    target_id: &str,
+    target: &Target,
     env: &minijinja::Environment,
 ) -> Result<()> {
-    let target_config = config_meta
-        .config
-        .targets
-        .get(target_id)
-        .context(format!("could not find config for {}. Add [target.{}] to your configuration file with the required values", target_id, target_id))?;
-
-    let target = Target::from_config(target_config, target_id, &config_meta.root_dir)?;
-
     generate_suite(config_meta, &target, &env)?;
 
     Ok(())
