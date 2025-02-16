@@ -1,7 +1,0 @@
-name,description
-check headlights,The function for checking headlights should return true if the vehicle has the correct number of headlights
-check tires,The function for checking tires should return true if the vehicle has the correct number of inflated tires
-broken headlight is caught,The function for checking headlights should return false if the vehicle has a broken headlight
-flat tire is caught,The function for checking tires should return false if the vehicle has a flat tire
-extra tire throws error,Having an extra tire is invalid and should throw an error
-extra headlight throws error,Having an extra headlight is invalid and should throw an error
