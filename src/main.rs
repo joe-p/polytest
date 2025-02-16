@@ -153,7 +153,7 @@ impl Document {
                     config
                         .template
                         .clone()
-                        .context("template is required for custom documents")?,
+                        .context(format!("{} is not a default document id and the template field is required for custom documents", id))?,
                 );
 
                 let template = std::fs::read_to_string(template_path)
