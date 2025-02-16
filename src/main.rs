@@ -121,12 +121,12 @@ impl Runner {
 struct Target {
     id: String,
     out_dir: PathBuf,
-    test_regex_template: Option<String>,
-    suite_file_name_template: Option<String>,
-    suite_template: Option<String>,
-    group_template: Option<String>,
-    test_template: Option<String>,
-    runner: Option<Runner>,
+    test_regex_template: String,
+    suite_file_name_template: String,
+    suite_template: String,
+    group_template: String,
+    test_template: String,
+    runner: Runner,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -184,129 +184,86 @@ impl Target {
         config: &TargetConfig,
         id: &str,
         config_root: &Path,
-        is_custom: bool,
     ) -> Result<Self> {
-        if !is_custom {
-            match id {
+            return match id {
                 "pytest" => {
-                    return Ok(Self {
+                    Ok(Self {
                         id: id.to_string(),
-                        test_regex_template: Some(
-                            r"(?m)def test_{{ name | convert_case('Snake') }}\(".to_string(),
-                        ),
-                        suite_file_name_template: Some(
+                        test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
+                            .to_string(),
+
+                        suite_file_name_template:
                             "test_{{ suite.name | convert_case('Snake') }}.py".to_string(),
-                        ),
                         out_dir: config_root.join(&config.out_dir),
-                        suite_template: Some(
-                            include_str!("../templates/pytest/suite.py.jinja").to_string(),
-                        ),
-                        group_template: Some(
-                            include_str!("../templates/pytest/group.py.jinja").to_string(),
-                        ),
-                        test_template: Some(
-                            include_str!("../templates/pytest/test.py.jinja").to_string(),
-                        ),
-                        runner: config
-                            .runner
-                            .as_ref()
-                            .map(|runner_config| Runner::from_config(&runner_config))
-                            .or(Some(Runner {
-                                env: None,
-                                command: "pytest".to_string(),
-                                args: vec!["-v".to_string()],
-                                fail_regex_template:
-                                    r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
-                                pass_regex_template:
-                                    r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
-                                work_dir: None,
-                            })),
-                    });
+                        suite_template: include_str!("../templates/pytest/suite.py.jinja")
+                            .to_string(),
+                        group_template: include_str!("../templates/pytest/group.py.jinja")
+                            .to_string(),
+                        test_template: include_str!("../templates/pytest/test.py.jinja")
+                            .to_string(),
+                        runner: Runner {
+                            env: None,
+                            command: "pytest".to_string(),
+                            args: vec!["-v".to_string()],
+                            fail_regex_template:
+                                r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
+                            pass_regex_template:
+                                r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
+                            work_dir: None,
+                        },
+                    })
                 }
                 "bun" => {
-                    return Ok(Self {
+                    Ok(Self {
                     id: id.to_string(),
-                    test_regex_template: Some(r#"(?m)test\("{{ name }}","#.to_string()),
-                    suite_file_name_template: Some(
+                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
+                    suite_file_name_template: 
                         "{{ suite.name | convert_case('Snake') }}.test.ts".to_string(),
-                    ),
                     out_dir: config_root.join(&config.out_dir),
-                    suite_template: Some(
+                    suite_template: 
                         include_str!("../templates/bun/suite.ts.jinja").to_string(),
-                    ),
-                    group_template: Some(
+                    group_template: 
                         include_str!("../templates/bun/group.ts.jinja").to_string(),
-                    ),
-                    test_template: Some(include_str!("../templates/bun/test.ts.jinja").to_string()),
-                    runner: config
-                        .runner
-                        .as_ref()
-                        .map(|runner_config| Runner::from_config(&runner_config))
-                        .or(Some(Runner {
+                    test_template: include_str!("../templates/bun/test.ts.jinja").to_string(),
+                    runner: Runner {
                             env: None,
                             command: "bun".to_string(),
                             args: vec!["test".to_string()],
                             fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
                             pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
                             work_dir: None,
-                        })),
-                });
+                        },
+                })
                 }
                 _ => {
-                    anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id)
+                    Err(anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id))
                 }
-            };
+            }
         }
 
-        let mut target = Self {
+    pub fn from_custom_config(config: &CustomTargetConfig, id: &str, config_root: &Path) -> Result<Self> {
+        let template_dir = &config_root.join(&config.template_dir);
+
+        let suite_file = find_template_file(template_dir, "suite*").context(format!("failed to find suite template for {}", id))?;
+        let suite_template = std::fs::read_to_string(suite_file).context(format!("failed to read suite template file for {}", id))?;
+
+        let group_file = find_template_file(template_dir, "group*").context(format!("failed to find group template for {}", id))?;
+        let group_template = std::fs::read_to_string(group_file).context(format!("failed to read group template file for {}", id))?;
+
+        let test_file = find_template_file(template_dir, "test*").context(format!("failed to find test template for {}", id))?;
+        let test_template = std::fs::read_to_string(test_file).context(format!("failed to read test template file for {}", id))?; 
+
+
+         Ok(Self {
             id: id.to_string(),
-            test_regex_template: config
-                .test_regex_template
-                .clone()
-                .map(|t| "(?m)".to_owned() + t.as_str()),
+            test_regex_template: "(?m)".to_owned() + config.test_regex_template.as_str(),
             out_dir: config_root.join(&config.out_dir),
             suite_file_name_template: config.suite_file_name_template.clone(),
-            suite_template: None,
-            group_template: None,
-            test_template: None,
-            runner: config
-                .runner
-                .as_ref()
-                .map(|runner_config| Runner::from_config(&runner_config)),
-        };
-
-        let template_dir = &config_root.join(
-            config
-                .template_dir
-                .as_ref()
-                .ok_or(anyhow!("Template directory is required for custom targets"))?,
-        );
-
-        if let Ok(suite_file) = find_template_file(template_dir, "suite*") {
-            target.suite_template = Some(
-                std::fs::read_to_string(suite_file)
-                    .context(format!("failed to read suite template file for {}", id,))?,
-            );
-
-            let group_file = find_template_file(template_dir, "group*")?;
-            target.group_template = Some(
-                std::fs::read_to_string(group_file)
-                    .context(format!("failed to read group template file for {}", id))?,
-            );
-
-            let test_file = find_template_file(template_dir, "test*")?;
-
-            target.test_template = Some(
-                std::fs::read_to_string(test_file)
-                    .context(format!("failed to read test template file for {}", id))?,
-            );
-        }
-
-        if target.suite_template.is_none() {
-            return Err(anyhow!("No suite or plan template provided"));
-        }
-
-        Ok(target)
+            suite_template,
+            group_template,
+            test_template,
+            runner: Runner::from_config(&config.runner),
+        })
     }
 }
 
@@ -336,11 +293,6 @@ struct Config {
 #[derive(Deserialize, Debug, Clone)]
 struct TargetConfig {
     out_dir: PathBuf,
-
-    test_regex_template: Option<String>,
-    suite_file_name_template: Option<String>,
-    template_dir: Option<PathBuf>,
-    runner: Option<RunnerConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -351,18 +303,6 @@ struct CustomTargetConfig {
     suite_file_name_template: String,
     template_dir: PathBuf,
     runner: RunnerConfig,
-}
-
-impl From<CustomTargetConfig> for TargetConfig {
-    fn from(config: CustomTargetConfig) -> Self {
-        Self {
-            out_dir: config.out_dir,
-            test_regex_template: Some(config.test_regex_template),
-            suite_file_name_template: Some(config.suite_file_name_template),
-            template_dir: Some(config.template_dir),
-            runner: Some(config.runner),
-        }
-    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -526,7 +466,7 @@ fn main() -> Result<()> {
         .targets
         .clone()
         .into_iter()
-        .map(|(id, config)| Target::from_config(&config, &id, &config_meta.root_dir, false))
+        .map(|(id, config)| Target::from_config(&config, &id, &config_meta.root_dir))
         .chain(
             config_meta
                 .config
@@ -534,48 +474,37 @@ fn main() -> Result<()> {
                 .clone()
                 .into_iter()
                 .map(|(id, config)| {
-                    Target::from_config(&config.into(), &id, &config_meta.root_dir, true)
+                    Target::from_custom_config(&config.into(), &id, &config_meta.root_dir)
                 }),
         )
         .collect::<Result<Vec<Target>>>()?;
 
     for target in &all_targets {
-        if let Some(runner) = &target.runner {
-            templates.insert(
-                format!("{}_fail_regex", target.id),
-                runner.fail_regex_template.clone(),
-            );
-            templates.insert(
-                format!("{}_pass_regex", target.id),
-                runner.pass_regex_template.clone(),
-            );
-        }
 
-        if let Some(suite_file_name_template) = &target.suite_file_name_template {
-            templates.insert(
-                format!("{}_suite_file_name", target.id),
-                suite_file_name_template.to_string(),
-            );
-        }
+        templates.insert(
+            format!("{}_fail_regex", target.id),
+            target.runner.fail_regex_template.clone(),
+        );
+        templates.insert(
+            format!("{}_pass_regex", target.id),
+            target.runner.pass_regex_template.clone(),
+        );
 
-        if let Some(test_regex_template) = &target.test_regex_template {
-            templates.insert(
-                format!("{}_test_regex", target.id),
-                test_regex_template.to_string(),
-            );
-        }
+        templates.insert(
+            format!("{}_suite_file_name", target.id),
+            target.suite_file_name_template.to_string(),
+        );
 
-        if let Some(suite_template) = &target.suite_template {
-            templates.insert(format!("{}_suite", target.id), suite_template.to_string());
-        }
+        templates.insert(
+            format!("{}_test_regex", target.id),
+            target.test_regex_template.to_string(),
+        );
 
-        if let Some(group_template) = &target.group_template {
-            templates.insert(format!("{}_group", target.id), group_template.to_string());
-        }
+        templates.insert(format!("{}_suite", target.id), target.suite_template.to_string());
 
-        if let Some(test_template) = &target.test_template {
-            templates.insert(format!("{}_test", target.id), test_template.to_string());
-        }
+        templates.insert(format!("{}_group", target.id), target.group_template.to_string());
+
+        templates.insert(format!("{}_test", target.id), target.test_template.to_string());
     }
 
     templates.iter().for_each(|(name, template)| {
@@ -633,10 +562,7 @@ fn main() -> Result<()> {
             };
 
             for target in &targets {
-                let runner = target.runner.clone().context(format!(
-                    "Attempted to execute runner for {}, but a runner is not configured",
-                    target.id
-                ))?;
+                let runner = target.runner.clone();
 
                 println!(
                     "Running {}: {} {:?}",
