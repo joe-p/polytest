@@ -16,6 +16,21 @@ groups = ["shape", "polygon", "rectangle"]
 desc = "A triangle is a polygon with three edges"
 groups = ["shape", "polygon"]
 
+# Groups
+
+[group.polygon]
+desc = "Tests that only apply to polygons"
+
+[group.circle]
+desc = "Tests that only apply to circles"
+
+[group.shape]
+desc = "Tests that apply to any shape. A shape is a polygon OR a circle"
+
+[group.rectangle]
+desc = "Tests that apply only to rectangles, a subset of polygons"
+
+
 ## Tests
 
 [test.area]
@@ -45,20 +60,6 @@ group = "circle"
 [test.diameter]
 desc = "A circle should be able to accurately calculate its diameter"
 group = "circle"
-
-## Groups
-
-[group.shape]
-desc = "A shape is a polygon OR a circle"
-
-[group.polygon]
-desc = "A polygon is a shape with at least 3 edges"
-
-[group.circle]
-desc = "Tests that only correspond to circle"
-
-[group.rectangle]
-desc = "A rectangle is a polygon with four right angles"
 
 # Test Targets
 
