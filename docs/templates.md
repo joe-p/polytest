@@ -47,12 +47,44 @@ Converts a string to the given case. The following cases are supported
 * UpperFlat
 * Alternating
 
-For more information on behavior see https://docs.rs/convert_case/0.7.1/convert_case/enum.Case.html
+For more information on behavior see <https://docs.rs/convert_case/0.7.1/convert_case/enum.Case.html>
 
 ##### Example
 
 ```toml
 suite_file_name_template = "test_{{ suite.name | convert_case('Snake') }}.rb"
+```
+
+## Test, Group, and Suite Structs
+
+The following structs are available in various templates.
+
+### Test
+
+```rust
+pub(crate) struct Test {
+    pub(crate) name: String,
+    pub(crate) desc: String,
+}
+```
+
+### Group
+
+```rust
+pub(crate) struct Group {
+    pub(crate) name: String,
+    pub(crate) tests: Vec<Test>,
+    pub(crate) desc: String,
+}
+```
+
+### Suite
+
+```rust
+pub(crate) struct Suite {
+    pub(crate) name: String,
+    pub(crate) groups: Vec<Group>,
+}
 ```
 
 ## Suite, Group, and Test Templates
@@ -67,7 +99,7 @@ Each suite template must contain a marker that indicates the start of the suite 
 
 #### Available Variables
 
-* `suite` - Python representation of the `Suite` struct
+* `suite` - [Suite](#suite) struct
 
 #### Example
 
@@ -90,7 +122,7 @@ Each group template must contain a marker that indicates the start of the group 
 
 #### Available Variables
 
-* `group` - Python representation of the `Group` struct
+* `group` - [Group](#group) struct
 
 #### Example
 
@@ -111,7 +143,7 @@ The test template is the scaffolding for the actual test case implementation. It
 
 #### Available Variables
 
-* `test` - Python representation of the `Test` struct
+* `test` - [Test](#test) struct
 
 #### Example
 
@@ -124,4 +156,3 @@ The following is an example from the `bun` target.
       throw new Error("TEST NOT IMPLEMENTED");
     });
 ```
-
