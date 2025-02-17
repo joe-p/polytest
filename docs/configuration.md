@@ -28,7 +28,6 @@ The `groups` field within a suite table is used to define the test groups that b
 
 ### Example
 
-
 ```toml
 [suite.circle]
 desc = "A circle is a shape defined by all points on a plane that are equidistant from a given point"
@@ -117,7 +116,7 @@ group = "circle"
 
 ## target.\<NAME>
 
-Test targets are defined under the `target` table. Test targets are the testting frameworks for the implementations (i.e. `pytest` for python). 
+Test targets are defined under the `target` table. Test targets are the testting frameworks for the implementations (i.e. `pytest` for python).
 
 ### Supported Targets
 
@@ -160,7 +159,7 @@ The `suite_file_name_template` field is used to define the template for the suit
 
 The variables available for use in the template. See [templates documentation](./templates.md) for more information on how these variables can be used.
 
-* `suite` - Python representation of the `Suite` struct
+* `suite` - [Suite](./templates.md#suite) struct
 
 #### test_regex_template
 
