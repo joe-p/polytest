@@ -12,7 +12,7 @@ The test plan is named via the `name` field. This is generally only used for dis
 name = "Shapes Test Plan
 ```
 
-## suite.\<NAME>
+## suite.\<SUITE_NAME>
 
 Test suites are a collection of tests. For most implementations this roughly maps to the tests in a single file. Test cases are defined under the `suite` table.
 
@@ -42,7 +42,7 @@ desc = "A triangle is a polygon with three edges"
 groups = ["shape", "polygon"]
 ```
 
-## group.\<NAME>
+## group.\<GROUP_NAME>
 
 Groups are a collection of test cases that typically share something in common. You could also think of a group as a label on a test case, but there is a strict "one group" -> "many testcases" relationship.
 
@@ -57,20 +57,11 @@ The `desc` field within a group table is used to describe the group.
 ```toml
 [group.polygon]
 desc = "Tests that only apply to polygons"
-
-[group.circle]
-desc = "Tests that only apply to circles"
-
-[group.shape]
-desc = "Tests that apply to any shape. A shape is a polygon OR a circle"
-
-[group.rectangle]
-desc = "Tests that apply only to rectangles, a subset of polygons"
 ```
 
-## test.\<NAME>
+## group.\<GROUP_NAME>.test.\<TEST_NAME>
 
-Test cases are defined under the `test` table. These map to one test case that will have a pass or fail status when ran.
+Test cases are defined under the `test` table within a `group`. These map to one test case that will have a pass or fail status when ran.
 
 ### Fields
 
@@ -78,43 +69,17 @@ Test cases are defined under the `test` table. These map to one test case that w
 
 The `desc` field describes what is being tested.
 
-#### group
-
-The `group` field is used to define the group that the test case belongs to.
-
 ### Example
 
 ```toml
-[test.area]
-desc = "A shape should be able to accurately calculate its area"
-group = "shape"
-
-[test.perimeter]
-desc = "A shape should be able to accurately calculate its perimeter (or circumference)"
-group = "shape"
-
-[test.vertex_count]
+[group.polygon.test.vertex_count]
 desc = "A polygon should accurately count the number of verticies it contains"
-group = "polygon"
 
-[test.edge_count]
+[group.polygon.test.edge_count]
 desc = "A polygon should accurately count the number of edges it contains"
-group = "polygon"
-
-[test.is_square]
-desc = "A rectangle should be able to accurately determine if it is a square"
-group = "rectangle"
-
-[test.radius]
-desc = "A circle should be able to accurately calculate its radius"
-group = "circle"
-
-[test.diameter]
-desc = "A circle should be able to accurately calculate its diameter"
-group = "circle"
 ```
 
-## target.\<NAME>
+## target.\<TARGET_NAME>
 
 Test targets are defined under the `target` table. Test targets are the testting frameworks for the implementations (i.e. `pytest` for python).
 
@@ -141,7 +106,7 @@ out_dir = "./implementations/python/tests"
 out_dir = "./implementations/bun/__tests__"
 ```
 
-## custom_target.\<NAME>
+## custom_target.\<CUSTOM_TARGET_NAME>
 
 Custom test targets can be defined under the `custom_target` table. Custom targets give you full control of scaffolding templates, test execution, and parsing.
 
@@ -181,7 +146,7 @@ The `template_dir` field is used to define the directory that contains the templ
 
 See [templates documentation](./templates.md) for more information on the expected contents of these files and available variables.
 
-## custom_target.\<NAME>.runner
+## custom_target.\<CUSTOM_TARGET_NAME>.runner
 
 `runner` is a table that defines how to run the test suites and parse the results.
 
@@ -221,7 +186,7 @@ The variables available for use in the template. See [templates documentation](.
 * `group_name` - The name of the group that contains the test (i.e. for `group.some_group`, `some_group` )
 * `test_name` - The name of the test (i.e. for `test.some_test`, `some_test` )
 
-## document.\<NAME>
+## document.\<DOCUMENT_NAME>
 
 A document is a generated file that is regenered each time `polytest generate` is ran.
 

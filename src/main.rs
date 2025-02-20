@@ -280,9 +280,6 @@ struct Config {
 
     #[serde(rename = "group")]
     groups: IndexMap<String, GroupConfig>,
-
-    #[serde(rename = "test")]
-    tests: IndexMap<String, TestConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -308,12 +305,14 @@ struct SuiteConfig {
 #[derive(Deserialize, Debug, Clone)]
 struct GroupConfig {
     desc: Option<String>,
+
+    #[serde(rename = "test")]
+    tests: IndexMap<String, TestConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
 struct TestConfig {
     desc: Option<String>,
-    group: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -331,7 +330,7 @@ impl Suite {
                 .iter()
                 .filter_map(|(id, g)| {
                     if suite_config.groups.contains(id) {
-                        Some(Group::from_config(config, g, id))
+                        Some(Group::from_config(g, id))
                     } else {
                         None
                     }
@@ -349,20 +348,10 @@ struct Group {
 }
 
 impl Group {
-    fn from_config(config: &Config, group_config: &GroupConfig, group_id: &str) -> Self {
-        let tests: Vec<Test> = config
-            .tests
-            .iter()
-            .filter(|(_, test)| test.group == group_id)
-            .map(|(id, test)| Test {
-                name: id.to_string(),
-                desc: test.desc.clone().unwrap_or("".to_string()),
-            })
-            .collect();
-
+    fn from_config(group_config: &GroupConfig, group_id: &str) -> Self {
         Self {
             name: group_id.to_string(),
-            tests,
+            tests: group_config.tests.iter().map(|(id, t)| Test::from_config(t, id)).collect(),
             desc: group_config.desc.clone().unwrap_or("".to_string()),
         }
     }
@@ -1001,13 +990,13 @@ fn generate_document(
     let group_values: Vec<Group> = config
         .groups
         .iter()
-        .map(|(id, g)| Group::from_config(config, g, id))
+        .map(|(id, g)| Group::from_config(g, id))
         .collect();
 
     let test_values: Vec<Test> = config
-        .tests
+        .groups
         .iter()
-        .map(|(id, t)| Test::from_config(t, id))
+        .flat_map(|(_, g_cfg)| g_cfg.tests.iter().map(|(t_id, t_cfg)| Test::from_config(t_cfg, t_id)))
         .collect();
 
     let template = env
