@@ -1,8 +1,6 @@
 name = "shapes example"
 
-# Test Case Definition
-
-## Suites
+# Test Suites
 
 [suite.circle]
 desc = "A circle is a shape defined by all points on a plane that are equidistant from a given point"
@@ -16,48 +14,46 @@ groups = ["shape", "polygon", "rectangle"]
 desc = "A triangle is a polygon with three edges"
 groups = ["shape", "polygon"]
 
-# Groups
+# Test Group: Polygon
 
 [group.polygon]
 desc = "Tests that only apply to polygons"
 
-[group.circle]
-desc = "Tests that only apply to circles"
+[group.polygon.test.vertex_count]
+desc = "A polygon should accurately count the number of verticies it contains"
 
-[group.shape]
-desc = "Tests that apply to any shape. A shape is a polygon OR a circle"
+[group.polygon.test.edge_count]
+desc = "A polygon should accurately count the number of edges it contains"
+
+# Test Group: Rectangle
 
 [group.rectangle]
 desc = "Tests that apply only to rectangles, a subset of polygons"
 
-
-## Tests
-
-[test.area]
-desc = "A shape should be able to accurately calculate its area"
-group = "shape"
-
-[test.perimeter]
-desc = "A shape should be able to accurately calculate its perimeter (or circumference)"
-group = "shape"
-
-[test.vertex_count]
-desc = "A polygon should accurately count the number of verticies it contains"
-group = "polygon"
-
-[test.edge_count]
-desc = "A polygon should accurately count the number of edges it contains"
-group = "polygon"
-
-[test.is_square]
+[group.rectangle.test.is_square]
 desc = "A rectangle should be able to accurately determine if it is a square"
-group = "rectangle"
 
-[test.radius]
+# Test Group: Shape
+
+[group.shape]
+desc = "Tests that apply to any shape. A shape is a polygon OR a circle"
+
+[group.shape.test.area]
+desc = "A shape should be able to accurately calculate its area"
+
+[group.shape.test.perimeter]
+desc = "A shape should be able to accurately calculate its perimeter (or circumference)"
+
+# Test Group: Circle
+
+[group.circle]
+desc = "Tests that only apply to a circle"
+
+[group.circle.test.radius]
 desc = "A circle should be able to accurately calculate its radius"
 group = "circle"
 
-[test.diameter]
+[group.circle.test.diameter]
 desc = "A circle should be able to accurately calculate its diameter"
 group = "circle"
 
