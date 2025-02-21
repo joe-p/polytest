@@ -154,11 +154,7 @@ See [templates documentation](./templates.md) for more information on the expect
 
 #### command
 
-The `command` field is used to define the command to run the test. This should just be the name of the executable.
-
-#### args
-
-The `args` field is used to define the arguments to pass to the test command.
+The `command` field is used to define the command to run the test.
 
 #### fail_regex_template
 

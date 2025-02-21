@@ -87,7 +87,6 @@ impl ConfigMeta {
 #[derive(Deserialize, Debug, Clone)]
 struct RunnerConfig {
     command: String,
-    args: Vec<String>,
     fail_regex_template: String,
     pass_regex_template: String,
     env: Option<HashMap<String, String>>,
@@ -96,7 +95,6 @@ struct RunnerConfig {
 #[derive(Deserialize, Debug, Clone)]
 struct Runner {
     command: String,
-    args: Vec<String>,
     fail_regex_template: String,
     pass_regex_template: String,
     env: Option<HashMap<String, String>>,
@@ -106,7 +104,6 @@ impl Runner {
     fn from_config(config: &RunnerConfig) -> Self {
         Self {
             command: config.command.clone(),
-            args: config.args.clone(),
             fail_regex_template: "(?m)".to_owned() + config.fail_regex_template.as_str(),
             pass_regex_template: "(?m)".to_owned() + config.pass_regex_template.as_str(),
             env: config.env.clone(),
@@ -200,8 +197,7 @@ impl Target {
                             .to_string(),
                         runner: Runner {
                             env: None,
-                            command: "pytest".to_string(),
-                            args: vec!["-v".to_string()],
+                            command: "pytest -v".to_string(),
                             fail_regex_template:
                                 r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
                             pass_regex_template:
@@ -223,8 +219,7 @@ impl Target {
                     test_template: include_str!("../templates/bun/test.ts.jinja").to_string(),
                     runner: Runner {
                             env: None,
-                            command: "bun".to_string(),
-                            args: vec!["test".to_string()],
+                            command: "bun test".to_string(),
                             fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
                             pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
                         },
@@ -548,12 +543,10 @@ fn main() -> Result<()> {
             for target in &targets {
                 let runner = target.runner.clone();
 
-                println!(
-                    "Running {}: {} {:?}",
-                    target.id, runner.command, runner.args
-                );
+                println!("Running {}: {}", target.id, runner.command);
 
-                let mut runner_cmd = cmd(runner.command, &runner.args[..]).dir(&target.out_dir);
+                let parsed_cmd: Vec<String> = shlex::Shlex::new(runner.command.as_str()).collect(); 
+                let mut runner_cmd = cmd(&parsed_cmd[0], &parsed_cmd[1..]).dir(&target.out_dir);
                 if let Some(env) = runner.env {
                     for (key, value) in env {
                         runner_cmd = runner_cmd.env(key, value);
