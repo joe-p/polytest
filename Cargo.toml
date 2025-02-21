@@ -37,6 +37,7 @@ regex = "1.11.1"
 
 # Used to easily deserialize the TOML configuration file
 serde = { version = "1.0.216", features = ["derive"] }
+shlex = "1.3.0"
 
 # Used to parse the TOML configuration file
 toml = "0.8.19"
