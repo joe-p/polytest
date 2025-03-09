@@ -9,8 +9,12 @@ The test plan is named via the `name` field. This is generally only used for dis
 ### Example
 
 ```toml
-name = "Shapes Test Plan
+name = "Shapes Test Plan"
 ```
+
+## package_name
+
+The `package_name` defines the name of the package being tested. This is primarily used in some of the templates for importing. For example, in Swift the template starts with a `import {{ package_name | convert_case('Pascal')`
 
 ## suite.\<SUITE_NAME>
 
