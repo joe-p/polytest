@@ -77,11 +77,6 @@ command = "xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -
 [target.swift.runner.Catalyst]
 command = "xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination 'platform=macOS,variant=Mac Catalyst'"
 
-# Document
-
-[document.markdown]
-out_file = "./documents/plan.md"
-
 # Custom Test Target
 
 [custom_target.minitest_unit]
@@ -97,6 +92,11 @@ command = "bundle exec rake test A='--verbose'"
 
 fail_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)"
 pass_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
+
+# Document
+
+[document.markdown]
+out_file = "./documents/plan.md"
 
 # Custom Document
 
