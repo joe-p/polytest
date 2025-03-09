@@ -123,7 +123,7 @@ struct Target {
     suite_template: String,
     group_template: String,
     test_template: String,
-    runners: Vec<Runner>,
+    runners: IndexMap<String, Runner>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -180,6 +180,20 @@ impl Target {
     fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
         return match id {
                 "pytest" => {
+                    let mut runners: IndexMap<String, Runner> = IndexMap::new();
+
+                    let default_runner = Runner {
+                            env: None,
+                            command: "pytest -v".to_string(),
+                            fail_regex_template:
+                                r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
+                            pass_regex_template:
+                                r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
+                            work_dir: config_root.join(&config.out_dir),
+                    };
+
+                    runners.insert("pytest -v".to_string(), default_runner);
+
                     Ok(Self {
                         id: id.to_string(),
                         test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
@@ -194,18 +208,22 @@ impl Target {
                             .to_string(),
                         test_template: include_str!("../templates/pytest/test.py.jinja")
                             .to_string(),
-                        runners: vec![Runner {
-                            env: None,
-                            command: "pytest -v".to_string(),
-                            fail_regex_template:
-                                r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
-                            pass_regex_template:
-                                r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
-                            work_dir: config_root.join(&config.out_dir),
-                        },]
+                        runners,
                     })
                 }
                 "bun" => {
+                    let mut runners: IndexMap<String, Runner> = IndexMap::new();
+
+                    let default_runner = Runner {
+                            env: None,
+                            command: "bun test".to_string(),
+                            fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
+                            pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
+                            work_dir: config_root.join(&config.out_dir),
+                };
+
+                    runners.insert("bun test".to_string(), default_runner);
+
                     Ok(Self {
                     id: id.to_string(),
                     test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
@@ -217,14 +235,8 @@ impl Target {
                     group_template:
                         include_str!("../templates/bun/group.ts.jinja").to_string(),
                     test_template: include_str!("../templates/bun/test.ts.jinja").to_string(),
-                    runners: vec![Runner {
-                            env: None,
-                            command: "bun test".to_string(),
-                            fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
-                            pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
-                            work_dir: config_root.join(&config.out_dir),
-                        },]
-                })
+                    runners,
+                    })
                 }
                 _ => {
                     Err(anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id))
@@ -254,6 +266,15 @@ impl Target {
         let test_template = std::fs::read_to_string(test_file)
             .context(format!("failed to read test template file for {}", id))?;
 
+        let mut runners: IndexMap<String, Runner> = IndexMap::new();
+
+        config.runners.iter().for_each(|(runner_id, runner_cfg)| {
+            runners.insert(
+                runner_id.clone(),
+                Runner::from_config(runner_cfg, &config_root.join(&config.out_dir)),
+            );
+        });
+
         Ok(Self {
             id: id.to_string(),
             test_regex_template: "(?m)".to_owned() + config.test_regex_template.as_str(),
@@ -262,13 +283,7 @@ impl Target {
             suite_template,
             group_template,
             test_template,
-            runners: config
-                .runners
-                .iter()
-                .map(|runner_cfg| {
-                    Runner::from_config(runner_cfg, &config_root.join(&config.out_dir))
-                })
-                .collect(),
+            runners,
         })
     }
 }
@@ -305,7 +320,9 @@ struct CustomTargetConfig {
     test_regex_template: String,
     suite_file_name_template: String,
     template_dir: PathBuf,
-    runners: Vec<RunnerConfig>,
+
+    #[serde(rename = "runner")]
+    runners: IndexMap<String, RunnerConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -479,15 +496,15 @@ fn main() -> Result<()> {
         .collect::<Result<Vec<Target>>>()?;
 
     for target in &all_targets {
-        for runner in &target.runners {
-            let target_cmd = target.id.clone() + &runner.command;
+        for (runner_id, runner) in &target.runners {
+            let target_runner = target.id.clone() + &runner_id;
 
             templates.insert(
-                format!("{}_fail_regex", target_cmd),
+                format!("{}_fail_regex", target_runner),
                 runner.fail_regex_template.clone(),
             );
             templates.insert(
-                format!("{}_pass_regex", target_cmd),
+                format!("{}_pass_regex", target_runner),
                 runner.pass_regex_template.clone(),
             );
         }
@@ -573,8 +590,8 @@ fn main() -> Result<()> {
             };
 
             for target in &targets {
-                for runner in &target.runners {
-                    println!("Running {}: {}", target.id, runner.command);
+                for (runner_id, runner) in &target.runners {
+                    println!("Running {} > {}: {}", target.id, runner_id, runner.command);
 
                     let parsed_cmd: Vec<String> =
                         shlex::Shlex::new(runner.command.as_str()).collect();
@@ -593,16 +610,16 @@ fn main() -> Result<()> {
                     let output = &mut String::new();
                     BufReader::new(reader).read_to_string(output)?;
 
-                    outputs.insert(target.id.clone() + &runner.command, output.clone());
+                    outputs.insert(target.id.clone() + &runner_id, output.clone());
                     statuses.insert(
-                        (target.id.clone(), runner.command.clone()),
+                        (target.id.clone(), runner_id.clone()),
                         runner_result.run()?.status,
                     );
                 }
             }
 
-            for ((target_id, command), status) in statuses {
-                let target_cmd = target_id.clone() + &command;
+            for ((target_id, runner_id), status) in statuses {
+                let target_runner = target_id.clone() + &runner_id;
 
                 let target = targets
                     .iter()
@@ -610,11 +627,11 @@ fn main() -> Result<()> {
                     .expect("the target should exist because the status exists");
 
                 let fail_regex_template = env
-                    .get_template(format!("{}_fail_regex", target_cmd).as_str())
+                    .get_template(format!("{}_fail_regex", target_runner).as_str())
                     .expect("template should exist since it was just added above");
 
                 let pass_regex_template = env
-                    .get_template(format!("{}_pass_regex", target_cmd).as_str())
+                    .get_template(format!("{}_pass_regex", target_runner).as_str())
                     .expect("template should exist since it was just added above");
 
                 let mut fails: Vec<String> = Vec::new();
@@ -641,16 +658,16 @@ fn main() -> Result<()> {
                                     })
                                     .context(format!(
                                         "failed to render fail regex for {}",
-                                        target_cmd
+                                        target_runner
                                     ))?;
 
                                 let fail_regex = Regex::new(&fail_regex).unwrap();
 
-                                if fail_regex.is_match(&outputs[&target_cmd]) {
+                                if fail_regex.is_match(&outputs[&target_runner]) {
                                     fails.push(
                                         format!(
                                             "  {} ({}) > {} > {} > {}: FAILED",
-                                            target_id, command, suite.name, group.name, test.name
+                                            target_id, runner_id, suite.name, group.name, test.name
                                         )
                                         .to_string(),
                                     );
@@ -664,17 +681,17 @@ fn main() -> Result<()> {
                                         })
                                         .context(format!(
                                             "failed to render pass regex for {}",
-                                            target_cmd
+                                            target_runner
                                         ))?;
 
                                     let pass_regex = Regex::new(&pass_regex).unwrap();
 
-                                    if !pass_regex.is_match(&outputs[&target_cmd]) {
+                                    if !pass_regex.is_match(&outputs[&target_runner]) {
                                         fails.push(
                                             format!(
                                                 "  {} ({}) > {} > {} > {}: UNKNOWN",
                                                 target_id,
-                                                command,
+                                                runner_id,
                                                 suite.name,
                                                 group.name,
                                                 test.name
@@ -689,11 +706,11 @@ fn main() -> Result<()> {
                 }
                 // If the command was exit 0 AND there were no FAILED or UNKNOWN test results
                 if status.success() && fails.is_empty() {
-                    println!("{} ({}) ran succesfully!", target_id, command);
+                    println!("{} ({}): ran succesfully!", target_id, runner_id);
                 } else {
                     eprintln!(
-                        "{} ({}) failed to run succesfully ({})",
-                        target_id, command, status
+                        "{} ({}): failed to run succesfully ({})",
+                        target_id, runner_id, status
                     );
                     for failure in &fails {
                         eprintln!("{failure}")

@@ -80,7 +80,7 @@ test_regex_template = "def test_{{ name | convert_case('Snake') }}"
 
 template_dir = "./templates/minitest_unit"
 
-[[custom_target.minitest_unit.runners]]
+[custom_target.minitest_unit.runner."rake test"]
 command = "bundle exec rake test A='--verbose'"
 
 fail_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)"
