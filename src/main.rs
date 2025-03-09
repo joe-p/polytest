@@ -116,7 +116,6 @@ impl Runner {
             .iter()
             .chain(configs.iter())
             .map(|(id, cfg)| {
-                println!("{}, {:?}", id, configs);
                 let fail_regex = cfg
                     .fail_regex_template
                     .clone()
@@ -288,7 +287,40 @@ impl Target {
                             &config_root.join(&config.out_dir)
                         )?,
                     })
-                }
+                },
+                "swift" => {
+                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
+
+                    let fail = r#"Failing tests:(.|\W)*{{ (suite_name + " " + test_name) | convert_case('Camel') }}\(\)(.|\W)*** TEST FAILED **"#;
+                    default_runner_cfgs.insert("macOS".to_string(), RunnerConfig {
+                            env: None,
+                            // TODO: Make command a renderable template
+                            command: Some(r#"xcodebuild -scheme Shapes test -destination "platform=macOS""#.to_string()),
+                            pass_regex_template: Some(r#""{{ suite_name }}: {{ test_name }}" passed"#.to_string()),
+                            fail_regex_template: Some(fail.to_string()),
+                            work_dir: Some(config.out_dir.parent().expect("parent should always exist").parent().expect("parent should always exist").to_owned()),
+                    });
+
+                    println!("{}", default_runner_cfgs.get("macOS").unwrap().command.clone().unwrap());
+
+                    Ok(Self {
+                    id: id.to_string(),
+                    test_regex_template: r#"(?m)@Test\(".+: {{ name }}""#.to_string(),
+                    suite_file_name_template:
+                        "{{ suite.name | convert_case('Pascal') }}Tests.swift".to_string(),
+                    out_dir: config_root.join(&config.out_dir),
+                    suite_template:
+                        include_str!("../templates/swift/suite.swift.jinja").to_string(),
+                    group_template:
+                        include_str!("../templates/swift/group.swift.jinja").to_string(),
+                    test_template: include_str!("../templates/swift/test.swift.jinja").to_string(),
+                    runners: Runner::from_configs(
+                            default_runner_cfgs,
+                            &config.runners.clone().unwrap_or_default(),
+                            &config_root.join(&config.out_dir)
+                        )?,
+                    })
+                },
                 _ => {
                     Err(anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id))
                 }
@@ -337,6 +369,8 @@ impl Target {
 #[derive(Deserialize, Debug, Clone)]
 struct Config {
     name: String,
+
+    package_name: String,
 
     #[serde(rename = "document")]
     documents: HashMap<String, DocumentConfig>,
@@ -997,6 +1031,7 @@ fn generate_suite(
                 contents.len(),
                 &suite_template
                     .render(minijinja::context! {
+                        package_name => minijinja::Value::from(&config.package_name),
                         suite => minijinja::Value::from_serialize(suite),
                     })
                     .context(format!("failed to render suite for {}", target.id))?,
@@ -1042,6 +1077,7 @@ fn generate_suite(
                     .render(minijinja::context! {
                         test => minijinja::Value::from_serialize(test),
                         group_name => minijinja::Value::from(&group.name),
+                        suite_name => minijinja::Value::from(&suite.name),
                     })
                     .context(format!(
                         "failed to render test {} for group {}",
