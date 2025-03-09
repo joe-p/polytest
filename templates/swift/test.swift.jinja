@@ -1,0 +1,6 @@
+
+
+@Test("{{ suite_name }}: {{ test.name }}") 
+func {{ (suite_name + " " + test.name) | convert_case("Camel") }}() throws {
+    assert(false, "TEST NOT IMPLEMENTED")
+}

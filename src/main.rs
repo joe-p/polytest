@@ -108,7 +108,7 @@ impl Runner {
         configs: &IndexMap<String, RunnerConfig>,
         out_dir: &Path,
     ) -> Result<IndexMap<String, Self>> {
-        let mut prev: Option<RunnerConfig> = None;
+        let mut current_cfg = RunnerConfig::default();
 
         let mut runners: IndexMap<String, Self> = IndexMap::new();
 
@@ -116,44 +116,47 @@ impl Runner {
             .iter()
             .chain(configs.iter())
             .map(|(id, cfg)| {
-                println!("{}, {:?}", id, configs);
-                let fail_regex = cfg
-                    .fail_regex_template
-                    .clone()
-                    .or_else(|| prev.clone().and_then(|p| p.fail_regex_template))
-                    .context(format!(
-                        "fail_regex_template not defined for runner: {}",
-                        id
-                    ))?;
-
-                let pass_regex = cfg
-                    .pass_regex_template
-                    .clone()
-                    .or_else(|| prev.clone().and_then(|p| p.pass_regex_template))
-                    .context(format!(
-                        "pass_regex_template not defined for runner: {}",
-                        id
-                    ))?;
-
-                let runner = Runner {
-                    command: cfg
-                        .command
-                        .clone()
-                        .or_else(|| prev.clone().and_then(|p| p.command))
-                        .context(format!("command not defined for runner: {}", id))?,
-                    fail_regex_template: "(?m)".to_owned() + &fail_regex,
-                    pass_regex_template: "(?m)".to_owned() + &pass_regex,
-                    env: cfg.env.clone().or_else(|| prev.clone().and_then(|p| p.env)),
+                current_cfg = RunnerConfig {
+                    command: cfg.command.clone().or_else(|| current_cfg.command.clone()),
+                    env: cfg.env.clone().or_else(|| current_cfg.env.clone()),
                     work_dir: cfg
                         .work_dir
                         .clone()
-                        .or_else(|| prev.clone().and_then(|p| p.work_dir))
-                        .unwrap_or(out_dir.to_owned()),
+                        .or_else(|| current_cfg.work_dir.clone()),
+                    fail_regex_template: cfg
+                        .fail_regex_template
+                        .clone()
+                        .or_else(|| current_cfg.fail_regex_template.clone()),
+                    pass_regex_template: cfg
+                        .pass_regex_template
+                        .clone()
+                        .or_else(|| current_cfg.pass_regex_template.clone()),
+                };
+
+                let runner = Runner {
+                    command: current_cfg
+                        .command
+                        .clone()
+                        .context(format!("command not defined for runner: {}", id))?,
+                    fail_regex_template: "(?m)".to_owned()
+                        + &current_cfg.fail_regex_template.clone().context(format!(
+                            "fail_regex_template not defined for runner: {}",
+                            id
+                        ))?,
+                    pass_regex_template: "(?m)".to_owned()
+                        + &current_cfg.pass_regex_template.clone().context(format!(
+                            "pass_regex_template not defined for runner: {}",
+                            id
+                        ))?,
+                    env: current_cfg.env.clone(),
+                    work_dir: current_cfg
+                        .work_dir
+                        .clone()
+                        .unwrap_or_else(|| out_dir.to_owned()),
                 };
 
                 runners.insert(id.clone(), runner);
 
-                prev = Some(cfg.clone());
                 Ok(())
             })
             .collect::<Result<()>>()?;
@@ -288,7 +291,39 @@ impl Target {
                             &config_root.join(&config.out_dir)
                         )?,
                     })
-                }
+                },
+                "swift" => {
+                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
+
+                    let fail = r#"Failing tests:(.|\W)*{{ (suite_name + " " + test_name) | convert_case('Camel') }}\(\)(.|\W)*** TEST FAILED **"#;
+                    default_runner_cfgs.insert("macOS".to_string(), RunnerConfig {
+                            env: None,
+                            command: Some(r#"xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination "platform=macOS""#.to_string()),
+                            pass_regex_template: Some(r#""{{ suite_name }}: {{ test_name }}" passed"#.to_string()),
+                            fail_regex_template: Some(fail.to_string()),
+                            work_dir: Some(config.out_dir.parent().expect("parent should always exist").parent().expect("parent should always exist").to_owned()),
+                    });
+
+                    println!("{}", default_runner_cfgs.get("macOS").unwrap().command.clone().unwrap());
+
+                    Ok(Self {
+                    id: id.to_string(),
+                    test_regex_template: r#"(?m)@Test\(".+: {{ name }}""#.to_string(),
+                    suite_file_name_template:
+                        "{{ suite.name | convert_case('Pascal') }}Tests.swift".to_string(),
+                    out_dir: config_root.join(&config.out_dir),
+                    suite_template:
+                        include_str!("../templates/swift/suite.swift.jinja").to_string(),
+                    group_template:
+                        include_str!("../templates/swift/group.swift.jinja").to_string(),
+                    test_template: include_str!("../templates/swift/test.swift.jinja").to_string(),
+                    runners: Runner::from_configs(
+                            default_runner_cfgs,
+                            &config.runners.clone().unwrap_or_default(),
+                            &config_root.join(&config.out_dir)
+                        )?,
+                    })
+                },
                 _ => {
                     Err(anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id))
                 }
@@ -337,6 +372,8 @@ impl Target {
 #[derive(Deserialize, Debug, Clone)]
 struct Config {
     name: String,
+
+    package_name: String,
 
     #[serde(rename = "document")]
     documents: HashMap<String, DocumentConfig>,
@@ -640,10 +677,16 @@ fn main() -> Result<()> {
 
             for target in &targets {
                 for (runner_id, runner) in &target.runners {
-                    println!("Running {} > {}: {}", target.id, runner_id, runner.command);
+                    let rendered_cmd = &env.render_str(
+                        &runner.command,
+                        minijinja::context! {
+                            package_name => minijinja::Value::from(&config_meta.config.package_name),
+                        },
+                    )?;
 
-                    let parsed_cmd: Vec<String> =
-                        shlex::Shlex::new(runner.command.as_str()).collect();
+                    println!("Running {} > {}: {}", target.id, runner_id, rendered_cmd);
+
+                    let parsed_cmd: Vec<String> = shlex::Shlex::new(rendered_cmd).collect();
 
                     let mut runner_cmd =
                         cmd(&parsed_cmd[0], &parsed_cmd[1..]).dir(&runner.work_dir);
@@ -997,6 +1040,7 @@ fn generate_suite(
                 contents.len(),
                 &suite_template
                     .render(minijinja::context! {
+                        package_name => minijinja::Value::from(&config.package_name),
                         suite => minijinja::Value::from_serialize(suite),
                     })
                     .context(format!("failed to render suite for {}", target.id))?,
@@ -1042,6 +1086,7 @@ fn generate_suite(
                     .render(minijinja::context! {
                         test => minijinja::Value::from_serialize(test),
                         group_name => minijinja::Value::from(&group.name),
+                        suite_name => minijinja::Value::from(&suite.name),
                     })
                     .context(format!(
                         "failed to render test {} for group {}",
