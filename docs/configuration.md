@@ -148,7 +148,9 @@ See [templates documentation](./templates.md) for more information on the expect
 
 ## custom_target.\<CUSTOM_TARGET_NAME>.runner.\<RUNNER_NAME>
 
-`runner` is a table that defines how to run the test suites and parse the results. There can be multiple runners defined for one target (for example, testing multiple platforms)
+`runner` is a table that defines how to run the test suites and parse the results. There can be multiple runners defined for one target (for example, testing multiple platforms).
+
+Each runner will inherit the fields of the previously-defined runner if they are not defined.
 
 ### Fields
 
