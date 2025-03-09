@@ -90,6 +90,7 @@ struct RunnerConfig {
     fail_regex_template: String,
     pass_regex_template: String,
     env: Option<HashMap<String, String>>,
+    work_dir: Option<PathBuf>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -98,15 +99,17 @@ struct Runner {
     fail_regex_template: String,
     pass_regex_template: String,
     env: Option<HashMap<String, String>>,
+    work_dir: PathBuf
 }
 
 impl Runner {
-    fn from_config(config: &RunnerConfig) -> Self {
+    fn from_config(config: &RunnerConfig, out_dir: &Path) -> Self {
         Self {
             command: config.command.clone(),
             fail_regex_template: "(?m)".to_owned() + config.fail_regex_template.as_str(),
             pass_regex_template: "(?m)".to_owned() + config.pass_regex_template.as_str(),
             env: config.env.clone(),
+            work_dir: config.work_dir.clone().unwrap_or_else(|| out_dir.to_path_buf()), 
         }
     }
 }
@@ -202,6 +205,7 @@ impl Target {
                                 r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
                             pass_regex_template:
                                 r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
+                            work_dir: config_root.join(&config.out_dir),  
                         },
                     })
                 }
@@ -222,6 +226,7 @@ impl Target {
                             command: "bun test".to_string(),
                             fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
                             pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
+                            work_dir: config_root.join(&config.out_dir),  
                         },
                 })
                 }
@@ -252,7 +257,7 @@ impl Target {
             suite_template,
             group_template,
             test_template,
-            runner: Runner::from_config(&config.runner),
+            runner: Runner::from_config(&config.runner, &config_root.join(&config.out_dir)),
         })
     }
 }
@@ -547,6 +552,7 @@ fn main() -> Result<()> {
 
                 let parsed_cmd: Vec<String> = shlex::Shlex::new(runner.command.as_str()).collect(); 
                 let mut runner_cmd = cmd(&parsed_cmd[0], &parsed_cmd[1..]).dir(&target.out_dir);
+                runner_cmd = runner_cmd.dir(&target.runner.work_dir);
                 if let Some(env) = runner.env {
                     for (key, value) in env {
                         runner_cmd = runner_cmd.env(key, value);
