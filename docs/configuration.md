@@ -146,15 +146,21 @@ The `template_dir` field is used to define the directory that contains the templ
 
 See [templates documentation](./templates.md) for more information on the expected contents of these files and available variables.
 
-## custom_target.\<CUSTOM_TARGET_NAME>.runner
+## custom_target.\<CUSTOM_TARGET_NAME>.runner.\<RUNNER_NAME>
 
-`runner` is a table that defines how to run the test suites and parse the results.
+`runner` is a table that defines how to run the test suites and parse the results. There can be multiple runners defined for one target (for example, testing multiple platforms).
+
+Each runner will inherit the fields of the previously-defined runner if they are not defined.
 
 ### Fields
 
 #### command
 
-The `command` field is used to define the command to run the test.
+The `command` field is used to define the command to run the tests.
+
+#### work_dir
+
+The `work_dir` field is used to define the working directory for the runner. If not defined, the `out_dir` of the target will be used.
 
 #### fail_regex_template
 
@@ -181,6 +187,16 @@ The variables available for use in the template. See [templates documentation](.
 * `suite_name` - The name of the suite that contains the test (i.e. for `suite.some_suite`, `some_suite` )
 * `group_name` - The name of the group that contains the test (i.e. for `group.some_group`, `some_group` )
 * `test_name` - The name of the test (i.e. for `test.some_test`, `some_test` )
+
+### Example
+
+```toml
+[custom_target.minitest_unit.runner."rake test"]
+command = "bundle exec rake test A='--verbose'"
+
+fail_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)"
+pass_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
+```
 
 ## document.\<DOCUMENT_NAME>
 
