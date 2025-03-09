@@ -69,6 +69,12 @@ out_dir = "./implementations/bun/__tests__"
 [target.swift]
 out_dir = "./implementations/swift/Tests/ShapesTests"
 
+[target.swift.runner.iOS]
+command = "xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest'"
+
+[target.swift.runner.Catalyst]
+command = "xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination 'platform=macOS,variant=Mac Catalyst'"
+
 # Document
 
 [document.markdown]
