@@ -84,11 +84,11 @@ impl ConfigMeta {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
 struct RunnerConfig {
-    command: String,
-    fail_regex_template: String,
-    pass_regex_template: String,
+    command: Option<String>,
+    fail_regex_template: Option<String>,
+    pass_regex_template: Option<String>,
     env: Option<HashMap<String, String>>,
     work_dir: Option<PathBuf>,
 }
@@ -103,17 +103,64 @@ struct Runner {
 }
 
 impl Runner {
-    fn from_config(config: &RunnerConfig, out_dir: &Path) -> Self {
-        Self {
-            command: config.command.clone(),
-            fail_regex_template: "(?m)".to_owned() + config.fail_regex_template.as_str(),
-            pass_regex_template: "(?m)".to_owned() + config.pass_regex_template.as_str(),
-            env: config.env.clone(),
-            work_dir: config.work_dir.clone().unwrap_or(out_dir.to_path_buf()),
-        }
+    fn from_configs(
+        default_configs: IndexMap<String, RunnerConfig>,
+        configs: &IndexMap<String, RunnerConfig>,
+        out_dir: &Path,
+    ) -> Result<IndexMap<String, Self>> {
+        let mut prev: Option<RunnerConfig> = None;
+
+        let mut runners: IndexMap<String, Self> = IndexMap::new();
+
+        default_configs
+            .iter()
+            .chain(configs.iter())
+            .map(|(id, cfg)| {
+                println!("{}, {:?}", id, configs);
+                let fail_regex = cfg
+                    .fail_regex_template
+                    .clone()
+                    .or_else(|| prev.clone().and_then(|p| p.fail_regex_template))
+                    .context(format!(
+                        "fail_regex_template not defined for runner: {}",
+                        id
+                    ))?;
+
+                let pass_regex = cfg
+                    .pass_regex_template
+                    .clone()
+                    .or_else(|| prev.clone().and_then(|p| p.pass_regex_template))
+                    .context(format!(
+                        "pass_regex_template not defined for runner: {}",
+                        id
+                    ))?;
+
+                let runner = Runner {
+                    command: cfg
+                        .command
+                        .clone()
+                        .or_else(|| prev.clone().and_then(|p| p.command))
+                        .context(format!("command not defined for runner: {}", id))?,
+                    fail_regex_template: "(?m)".to_owned() + &fail_regex,
+                    pass_regex_template: "(?m)".to_owned() + &pass_regex,
+                    env: cfg.env.clone().or_else(|| prev.clone().and_then(|p| p.env)),
+                    work_dir: cfg
+                        .work_dir
+                        .clone()
+                        .or_else(|| prev.clone().and_then(|p| p.work_dir))
+                        .unwrap_or(out_dir.to_owned()),
+                };
+
+                runners.insert(id.clone(), runner);
+
+                prev = Some(cfg.clone());
+                Ok(())
+            })
+            .collect::<Result<()>>()?;
+
+        Ok(runners)
     }
 }
-
 #[derive(Deserialize, Debug, Clone)]
 struct Target {
     id: String,
@@ -180,25 +227,22 @@ impl Target {
     fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
         return match id {
                 "pytest" => {
-                    let mut runners: IndexMap<String, Runner> = IndexMap::new();
+                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
 
-                    let default_runner = Runner {
+                    default_runner_cfgs.insert("pytest -v".to_string(), RunnerConfig {
                             env: None,
-                            command: "pytest -v".to_string(),
+                            command: Some("pytest -v".to_string()),
                             fail_regex_template:
-                                r"(?m){{ file_name }}::test_{{ test_name }} FAILED".to_string(),
+                                Some("{{ file_name }}::test_{{ test_name }} FAILED".to_string()),
                             pass_regex_template:
-                                r"(?m){{ file_name }}::test_{{ test_name }} PASSED".to_string(),
-                            work_dir: config_root.join(&config.out_dir),
-                    };
-
-                    runners.insert("pytest -v".to_string(), default_runner);
+                                Some("{{ file_name }}::test_{{ test_name }} PASSED".to_string()),
+                            work_dir: Some(config.out_dir.clone()),
+                    });
 
                     Ok(Self {
                         id: id.to_string(),
                         test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
                             .to_string(),
-
                         suite_file_name_template:
                             "test_{{ suite.name | convert_case('Snake') }}.py".to_string(),
                         out_dir: config_root.join(&config.out_dir),
@@ -208,21 +252,24 @@ impl Target {
                             .to_string(),
                         test_template: include_str!("../templates/pytest/test.py.jinja")
                             .to_string(),
-                        runners,
+                        runners: Runner::from_configs(
+                            default_runner_cfgs,
+                            &config.runners.clone().unwrap_or_default(),
+                            &config_root.join(&config.out_dir)
+                        )?,
                     })
                 }
                 "bun" => {
-                    let mut runners: IndexMap<String, Runner> = IndexMap::new();
 
-                    let default_runner = Runner {
+                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
+
+                    default_runner_cfgs.insert("bun test".to_string(), RunnerConfig {
                             env: None,
-                            command: "bun test".to_string(),
-                            fail_regex_template: r"(?m)\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
-                            pass_regex_template: r"(?m)\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string(),
-                            work_dir: config_root.join(&config.out_dir),
-                };
-
-                    runners.insert("bun test".to_string(), default_runner);
+                            command: Some("bun test".to_string()),
+                            fail_regex_template: Some(r"\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
+                            pass_regex_template: Some(r"\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
+                            work_dir: Some(config.out_dir.clone()),
+                    });
 
                     Ok(Self {
                     id: id.to_string(),
@@ -235,7 +282,11 @@ impl Target {
                     group_template:
                         include_str!("../templates/bun/group.ts.jinja").to_string(),
                     test_template: include_str!("../templates/bun/test.ts.jinja").to_string(),
-                    runners,
+                    runners: Runner::from_configs(
+                            default_runner_cfgs,
+                            &config.runners.clone().unwrap_or_default(),
+                            &config_root.join(&config.out_dir)
+                        )?,
                     })
                 }
                 _ => {
@@ -266,15 +317,6 @@ impl Target {
         let test_template = std::fs::read_to_string(test_file)
             .context(format!("failed to read test template file for {}", id))?;
 
-        let mut runners: IndexMap<String, Runner> = IndexMap::new();
-
-        config.runners.iter().for_each(|(runner_id, runner_cfg)| {
-            runners.insert(
-                runner_id.clone(),
-                Runner::from_config(runner_cfg, &config_root.join(&config.out_dir)),
-            );
-        });
-
         Ok(Self {
             id: id.to_string(),
             test_regex_template: "(?m)".to_owned() + config.test_regex_template.as_str(),
@@ -283,7 +325,11 @@ impl Target {
             suite_template,
             group_template,
             test_template,
-            runners,
+            runners: Runner::from_configs(
+                IndexMap::<String, RunnerConfig>::default(),
+                &config.runners,
+                &config_root.join(&config.out_dir),
+            )?,
         })
     }
 }
@@ -311,6 +357,9 @@ struct Config {
 #[derive(Deserialize, Debug, Clone)]
 struct TargetConfig {
     out_dir: PathBuf,
+
+    #[serde(rename = "runner")]
+    runners: Option<IndexMap<String, RunnerConfig>>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
