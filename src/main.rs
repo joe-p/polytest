@@ -304,7 +304,6 @@ impl Target {
                             work_dir: Some(config.out_dir.parent().expect("parent should always exist").parent().expect("parent should always exist").to_owned()),
                     });
 
-                    println!("{}", default_runner_cfgs.get("macOS").unwrap().command.clone().unwrap());
 
                     Ok(Self {
                     id: id.to_string(),
