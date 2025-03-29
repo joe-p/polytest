@@ -236,9 +236,9 @@ impl Target {
                             env: None,
                             command: Some("pytest -v".to_string()),
                             fail_regex_template:
-                                Some("{{ file_name }}::test_{{ test_name }} FAILED".to_string()),
+                                Some("{{ file_name }}::test_{{ test_name | convert_case('Snake') }} FAILED".to_string()),
                             pass_regex_template:
-                                Some("{{ file_name }}::test_{{ test_name }} PASSED".to_string()),
+                                Some("{{ file_name }}::test_{{ test_name | convert_case('Snake') }} PASSED".to_string()),
                             work_dir: Some(config.out_dir.clone()),
                     });
 
