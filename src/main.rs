@@ -376,12 +376,15 @@ struct Config {
     package_name: String,
 
     #[serde(rename = "document")]
+    #[serde(default)]
     documents: HashMap<String, DocumentConfig>,
 
     #[serde(rename = "target")]
+    #[serde(default)]
     targets: HashMap<String, TargetConfig>,
 
     #[serde(rename = "custom_target")]
+    #[serde(default)]
     custom_targets: HashMap<String, CustomTargetConfig>,
 
     #[serde(rename = "suite")]
