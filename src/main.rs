@@ -853,7 +853,7 @@ fn validate_target(
         if !suite_file.exists() {
             return Err(anyhow!(
                 "suite file {} does not exist",
-                suite_file.display()
+                std::path::absolute(suite_file)?.display()
             ));
         }
 
