@@ -1,0 +1,70 @@
+name: Shapes Example CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: macos-latest # Using macOS since it supports all implementations
+    
+    steps:
+    - uses: actions/checkout@v4
+
+    # Setup environments
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Setup Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.0'
+        bundler-cache: true
+        working-directory: examples/shapes/implementations/ruby
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v1
+      with:
+        bun-version: latest
+
+    # Install implementation dependencies
+    - name: Install Python dependencies
+      run: |
+        cd examples/shapes/implementations/python
+        pip install pytest
+
+    - name: Install Ruby dependencies
+      run: |
+        cd examples/shapes/implementations/ruby
+        bundle install
+
+    - name: Install Bun dependencies
+      run: |
+        cd examples/shapes/implementations/bun
+        bun install
+
+    - name: Cargo build
+      run: cargo build
+
+    # Generate, validate and run tests
+    - name: Generate tests
+      run: |
+        cd examples/shapes
+        cargo run -- generate
+
+    - name: Validate tests
+      run: |
+        cd examples/shapes
+        cargo run -- validate
+
+    - name: Run tests
+      run: |
+        cd examples/shapes
+        cargo run -- run
