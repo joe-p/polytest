@@ -1,3 +1,9 @@
+# 0.3.0
+
+## Features
+
+- Add `exclude_targets` for tests
+
 # 0.2.2
 
 ## Fixes

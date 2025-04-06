@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'test_helper'
+require "test_helper"
 
 # circle
 class TestCircle < Minitest::Test
@@ -11,6 +11,13 @@ class TestCircle < Minitest::Test
   # Polytest Suite: circle
 
   # Polytest Group: circle
+
+  def test_non_numeric
+    assert_raises ArgumentError do
+      Circle.new("Some radius")
+    end
+  end
+
   def test_diameter
     assert_equal 14, @circle.diameter
   end

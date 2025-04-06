@@ -58,6 +58,12 @@ group = "circle"
 desc = "A circle should be able to accurately calculate its diameter"
 group = "circle"
 
+[group.circle.test.non_numeric]
+desc = "Using a non-numeric radius should throw an error"
+group = "circle"
+# Exclude swift since it has static typing
+exclude_targets = ["swift"]
+
 # Test Targets
 
 [target.pytest]

@@ -428,6 +428,8 @@ struct GroupConfig {
 
 #[derive(Deserialize, Debug, Clone)]
 struct TestConfig {
+    #[serde(default)]
+    exclude_targets: Vec<String>,
     desc: Option<String>,
 }
 
@@ -481,11 +483,13 @@ impl Group {
 struct Test {
     name: String,
     desc: String,
+    exclude_targets: Vec<String>,
 }
 
 impl Test {
     fn from_config(test_config: &TestConfig, test_id: &str) -> Self {
         Self {
+            exclude_targets: test_config.exclude_targets.clone(),
             name: test_id.to_string(),
             desc: test_config.desc.clone().unwrap_or("".to_string()),
         }
@@ -743,6 +747,10 @@ fn main() -> Result<()> {
 
                         for group in &suite.groups {
                             for test in &group.tests {
+                                if test.exclude_targets.contains(&target_id) {
+                                    continue;
+                                }
+
                                 let fail_regex = fail_regex_template
                                     .render(minijinja::context! {
                                         file_name => minijinja::Value::from(&suite_file_name),
@@ -877,6 +885,14 @@ fn validate_target(
 
         for group in &suite.groups {
             for test in &group.tests {
+                if test.exclude_targets.contains(&target.id) {
+                    println!(
+                        "test \"{}\" excluded from {} for {}",
+                        test.name, suite.name, target.id
+                    );
+                    continue;
+                }
+
                 if !find_test(&contents, &target, &test.name, &env)? {
                     return Err(anyhow!(
                         "test \"{}\" does not exist in {}",
@@ -1074,6 +1090,14 @@ fn generate_suite(
 
         for group in &suite.groups {
             for test in &group.tests {
+                if test.exclude_targets.contains(&target.id) {
+                    println!(
+                        "test \"{}\" excluded from {} for {}",
+                        test.name, suite.name, target.id
+                    );
+                    continue;
+                }
+
                 // We don't need to get a group-specific chunk because two groups can't have the same test
                 if find_test(&suite_chunk.content, target, &test.name, env)? {
                     println!(
