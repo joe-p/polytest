@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
 use convert_case::{Case, Casing};
 use duct::cmd;
+use duct::Handle;
 use glob::glob;
 use indexmap::IndexMap;
 use regex::Regex;
@@ -544,6 +545,16 @@ struct Run {
     /// exit status of the runner(s)
     #[arg(long)]
     no_parse: bool,
+
+    /// Do not run the test runners in parallel
+    #[arg(long, default_value_t = false)]
+    no_parallel: bool,
+}
+
+struct ActiveRunner {
+    target: Target,
+    runner_id: String,
+    handle: Handle,
 }
 
 fn main() -> Result<()> {
@@ -681,6 +692,8 @@ fn main() -> Result<()> {
                 None => all_targets,
             };
 
+            let mut active_runners = Vec::<ActiveRunner>::new();
+
             for target in &targets {
                 for (runner_id, runner) in &target.runners {
                     let rendered_cmd = &env.render_str(
@@ -694,8 +707,10 @@ fn main() -> Result<()> {
 
                     let parsed_cmd: Vec<String> = shlex::Shlex::new(rendered_cmd).collect();
 
-                    let mut runner_cmd =
-                        cmd(&parsed_cmd[0], &parsed_cmd[1..]).dir(&runner.work_dir);
+                    let mut runner_cmd = cmd(&parsed_cmd[0], &parsed_cmd[1..])
+                        .dir(&runner.work_dir)
+                        .unchecked()
+                        .stderr_to_stdout();
 
                     if let Some(env) = &runner.env {
                         for (key, value) in env {
@@ -703,17 +718,49 @@ fn main() -> Result<()> {
                         }
                     }
 
-                    let runner_result = runner_cmd.unchecked();
-                    let reader = runner_result.stderr_to_stdout().reader()?;
-                    let output = &mut String::new();
-                    BufReader::new(reader).read_to_string(output)?;
+                    if run.no_parallel {
+                        let reader = runner_cmd.reader()?;
+                        let output = &mut String::new();
+                        BufReader::new(reader).read_to_string(output)?;
 
-                    outputs.insert(target.id.clone() + &runner_id, output.clone());
-                    statuses.insert(
-                        (target.id.clone(), runner_id.clone()),
-                        runner_result.run()?.status,
-                    );
+                        statuses.insert(
+                            (target.id.clone(), runner_id.clone()),
+                            runner_cmd.run()?.status,
+                        );
+
+                        outputs.insert(target.id.clone() + &runner_id, output.clone());
+                    } else {
+                        active_runners.push(ActiveRunner {
+                            handle: runner_cmd.stdout_capture().start()?,
+                            target: target.clone(),
+                            runner_id: runner_id.to_string(),
+                        })
+                    }
                 }
+            }
+
+            while !active_runners.is_empty() {
+                let mut idx_for_removal = Vec::<usize>::new();
+                for i in 0..active_runners.len() {
+                    let runner = &active_runners[i];
+                    if let Some(status) = runner.handle.try_wait()? {
+                        idx_for_removal.push(i);
+
+                        let output = String::from_utf8(status.stdout.clone())?;
+                        println!("{output}");
+                        let target_id = runner.target.id.clone();
+                        outputs.insert(target_id.clone() + &runner.runner_id, output);
+
+                        statuses.insert((target_id, runner.runner_id.clone()), status.status);
+                    }
+                }
+
+                for i in idx_for_removal.iter().rev() {
+                    active_runners.remove(*i);
+                }
+
+                // Add a small sleep to prevent busy-waiting
+                std::thread::sleep(std::time::Duration::from_millis(100));
             }
 
             for ((target_id, runner_id), status) in statuses {

@@ -3,6 +3,7 @@
 ## Features
 
 - Add `exclude_targets` for tests
+- Run test runners in parallel by default (disabled via `--no-parallel`)
 
 # 0.2.2
 
