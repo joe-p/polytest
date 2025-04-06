@@ -10,6 +10,9 @@ abstract class Polygon extends Shape {
 
 export class Circle extends Shape {
   constructor(public radius: number) {
+    if (isNaN(radius)) {
+      throw new Error("radius must be a number");
+    }
     super();
   }
 

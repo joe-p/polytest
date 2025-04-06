@@ -6,7 +6,7 @@
 | Name | Description |
 | --- | --- |
 | [shape](#shape) | Tests that apply to any shape. A shape is a polygon OR a circle |
-| [circle](#circle) | Tests that only correspond to circle |
+| [circle](#circle) | Tests that only apply to a circle |
 
 ### Rectangle
 
@@ -51,6 +51,7 @@
 | --- | --- |
 | [radius](#radius) | A circle should be able to accurately calculate its radius |
 | [diameter](#diameter) | A circle should be able to accurately calculate its diameter |
+| [non_numeric](#non-numeric) | Using a non-numeric radius should throw an error |
 
 ## Test Cases
 
@@ -81,3 +82,7 @@ A circle should be able to accurately calculate its radius
 ### diameter
 
 A circle should be able to accurately calculate its diameter
+
+### non_numeric
+
+Using a non-numeric radius should throw an error

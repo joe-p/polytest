@@ -9,6 +9,12 @@ describe("circle", () => {
   describe("circle", () => {
     // Polytest Group: circle
 
+    test("non_numeric", () => {
+      expect(() => {
+      new Circle("Some radius")
+      }).toThrow();
+    });
+
     test("diameter", () => {
       expect(circle.diameter()).toBe(14);
     });

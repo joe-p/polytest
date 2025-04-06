@@ -6,3 +6,4 @@ area,A shape should be able to accurately calculate its area
 perimeter,A shape should be able to accurately calculate its perimeter (or circumference)
 radius,A circle should be able to accurately calculate its radius
 diameter,A circle should be able to accurately calculate its diameter
+non_numeric,Using a non-numeric radius should throw an error

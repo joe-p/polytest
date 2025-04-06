@@ -27,6 +27,8 @@ module Shapes
     attr_reader :radius
 
     def initialize(radius)
+      raise ArgumentError, "radius must be a number" unless radius.is_a?(Numeric)
+
       @radius = radius
     end
 

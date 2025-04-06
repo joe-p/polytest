@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import math
 
+
 class Shape(ABC):
     @abstractmethod
     def area(self) -> float:
@@ -9,6 +10,7 @@ class Shape(ABC):
     @abstractmethod
     def perimeter(self) -> float:
         pass
+
 
 class Polygon(Shape):
     @abstractmethod
@@ -19,8 +21,12 @@ class Polygon(Shape):
     def vertex_count(self) -> int:
         pass
 
+
 class Circle(Shape):
     def __init__(self, radius: float):
+        if isinstance(radius, (int, float, complex)):
+            raise ValueError("radius must be a number")
+
         self.radius = radius
 
     def area(self) -> float:
@@ -31,6 +37,7 @@ class Circle(Shape):
 
     def diameter(self) -> float:
         return 2 * self.radius
+
 
 class Rectangle(Polygon):
     def __init__(self, width: float, height: float):
@@ -52,6 +59,7 @@ class Rectangle(Polygon):
     def is_square(self) -> bool:
         return self.width == self.height
 
+
 class Triangle(Polygon):
     def __init__(self, side_a: float, side_b: float, side_c: float):
         self.side_a = side_a
@@ -60,9 +68,7 @@ class Triangle(Polygon):
 
     def area(self) -> float:
         s = (self.side_a + self.side_b + self.side_c) / 2
-        return math.sqrt(
-            s * (s - self.side_a) * (s - self.side_b) * (s - self.side_c)
-        )
+        return math.sqrt(s * (s - self.side_a) * (s - self.side_b) * (s - self.side_c))
 
     def perimeter(self) -> float:
         return self.side_a + self.side_b + self.side_c
