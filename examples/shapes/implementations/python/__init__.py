@@ -24,8 +24,8 @@ class Polygon(Shape):
 
 class Circle(Shape):
     def __init__(self, radius: float):
-        if isinstance(radius, (int, float, complex)):
-            raise ValueError("radius must be a number")
+        if not isinstance(radius, (int, float, complex)):
+            raise ValueError(f"radius must be a number, got {type(radius)}")
 
         self.radius = radius
 
