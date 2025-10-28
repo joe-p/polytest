@@ -116,7 +116,7 @@ impl Runner {
         default_configs
             .iter()
             .chain(configs.iter())
-            .map(|(id, cfg)| {
+            .try_for_each(|(id, cfg)| {
                 current_cfg = RunnerConfig {
                     command: cfg.command.clone().or_else(|| current_cfg.command.clone()),
                     env: cfg.env.clone().or_else(|| current_cfg.env.clone()),
@@ -158,9 +158,8 @@ impl Runner {
 
                 runners.insert(id.clone(), runner);
 
-                Ok(())
-            })
-            .collect::<Result<()>>()?;
+                Ok::<(), anyhow::Error>(())
+            })?;
 
         Ok(runners)
     }
@@ -191,14 +190,12 @@ struct Document {
 impl Document {
     fn from_config(config: &DocumentConfig, id: &str, config_root: &Path) -> Result<Self> {
         match id {
-            "markdown" => {
-                return Ok(Self {
-                    out_file: config.out_file.clone(),
-                    template: config.template.clone().unwrap_or_else(|| {
-                        include_str!("../templates/markdown/plan.md.jinja").to_string()
-                    }),
-                });
-            }
+            "markdown" => Ok(Self {
+                out_file: config.out_file.clone(),
+                template: config.template.clone().unwrap_or_else(|| {
+                    include_str!("../templates/markdown/plan.md.jinja").to_string()
+                }),
+            }),
             _ => {
                 let template_path = config_root.join(
                     config
@@ -210,10 +207,10 @@ impl Document {
                 let template = std::fs::read_to_string(template_path)
                     .context(format!("failed to read template file for {}", id))?;
 
-                return Ok(Self {
+                Ok(Self {
                     out_file: config.out_file.clone(),
                     template,
-                });
+                })
             }
         }
     }
@@ -229,7 +226,7 @@ fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBu
 
 impl Target {
     fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
-        return match id {
+        match id {
                 "pytest" => {
                     let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
 
@@ -327,7 +324,7 @@ impl Target {
                 _ => {
                     Err(anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id))
                 }
-            };
+            }
     }
 
     pub fn from_custom_config(
@@ -593,14 +590,14 @@ fn main() -> Result<()> {
                 .clone()
                 .into_iter()
                 .map(|(id, config)| {
-                    Target::from_custom_config(&config.into(), &id, &config_meta.root_dir)
+                    Target::from_custom_config(&config, &id, &config_meta.root_dir)
                 }),
         )
         .collect::<Result<Vec<Target>>>()?;
 
     for target in &all_targets {
         for (runner_id, runner) in &target.runners {
-            let target_runner = target.id.clone() + &runner_id;
+            let target_runner = target.id.clone() + runner_id;
 
             templates.insert(
                 format!("{}_fail_regex", target_runner),
@@ -728,7 +725,7 @@ fn main() -> Result<()> {
                             runner_cmd.run()?.status,
                         );
 
-                        outputs.insert(target.id.clone() + &runner_id, output.clone());
+                        outputs.insert(target.id.clone() + runner_id, output.clone());
                     } else {
                         active_runners.push(ActiveRunner {
                             handle: runner_cmd.stdout_capture().start()?,
@@ -741,8 +738,7 @@ fn main() -> Result<()> {
 
             while !active_runners.is_empty() {
                 let mut idx_for_removal = Vec::<usize>::new();
-                for i in 0..active_runners.len() {
-                    let runner = &active_runners[i];
+                for (i, runner) in active_runners.iter().enumerate() {
                     if let Some(status) = runner.handle.try_wait()? {
                         idx_for_removal.push(i);
 
@@ -940,7 +936,7 @@ fn validate_target(
                     continue;
                 }
 
-                if !find_test(&contents, &target, &test.name, &env)? {
+                if !find_test(&contents, target, &test.name, env)? {
                     return Err(anyhow!(
                         "test \"{}\" does not exist in {}",
                         test.name,
@@ -1043,7 +1039,7 @@ fn generate_target(
     target: &Target,
     env: &minijinja::Environment,
 ) -> Result<()> {
-    generate_suite(config_meta, &target, &env)?;
+    generate_suite(config_meta, target, env)?;
 
     Ok(())
 }
