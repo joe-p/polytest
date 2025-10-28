@@ -1,25 +1,16 @@
 {
+  // Test comment
   "name": "Shapes Test Plan",
   "package_name": "shapes",
   "suite": {
     "circle": {
-      "groups": [
-        "shape",
-        "circle"
-      ]
+      "groups": ["shape", "circle"]
     },
     "rectangle": {
-      "groups": [
-        "shape",
-        "polygon",
-        "rectangle"
-      ]
+      "groups": ["shape", "polygon", "rectangle"]
     },
     "triangle": {
-      "groups": [
-        "shape",
-        "polygon"
-      ]
+      "groups": ["shape", "polygon"]
     }
   },
   "group": {
@@ -64,9 +55,7 @@
         },
         "non_numeric": {
           "desc": "Using a non-numeric radius should throw an error",
-          "exclude_targets": [
-            "swift"
-          ]
+          "exclude_targets": ["swift"]
         }
       }
     }

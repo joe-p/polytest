@@ -44,3 +44,4 @@ serde_json = "1.0"
 
 # Used to parse the TOML configuration file
 toml = "0.8.19"
+json_comments = "0.2.2"

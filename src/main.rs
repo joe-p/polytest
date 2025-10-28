@@ -5,6 +5,7 @@ use duct::cmd;
 use duct::Handle;
 use glob::glob;
 use indexmap::IndexMap;
+use json_comments::StripComments;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -75,9 +76,11 @@ impl ConfigMeta {
     fn from_file(path: &str) -> Result<Self> {
         let contents = std::fs::read_to_string(path).context("failed to read config file")?;
         let config: Config = if path.ends_with(".json") {
-            serde_json::from_str::<Config>(&contents).context("failed to parse config file")?
+            let stripped = StripComments::new(contents.as_bytes());
+
+            serde_json::from_reader(stripped).context("failed to parse config file")?
         } else {
-            toml::from_str::<Config>(&contents).context("failed to parse config file")?
+            toml::from_str(&contents).context("failed to parse config file")?
         };
         Ok(Self {
             root_dir: PathBuf::from(path)
@@ -594,17 +597,18 @@ struct ActiveRunner {
 
 fn main() -> Result<()> {
     let parsed = Cli::parse();
-    
-    let config_path = if parsed.config == "polytest.json" && !std::path::Path::new("polytest.json").exists() {
-        if std::path::Path::new("polytest.toml").exists() {
-            "polytest.toml"
+
+    let config_path =
+        if parsed.config == "polytest.json" && !std::path::Path::new("polytest.json").exists() {
+            if std::path::Path::new("polytest.toml").exists() {
+                "polytest.toml"
+            } else {
+                &parsed.config
+            }
         } else {
             &parsed.config
-        }
-    } else {
-        &parsed.config
-    };
-    
+        };
+
     let config_meta = ConfigMeta::from_file(config_path)?;
 
     let mut env = minijinja::Environment::new();
