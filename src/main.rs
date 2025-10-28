@@ -290,6 +290,36 @@ impl Target {
                         )?,
                     })
                 },
+                "vitest" => {
+
+                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
+
+                    default_runner_cfgs.insert("vitest".to_string(), RunnerConfig {
+                            env: None,
+                            command: Some("npx vitest run --no-color --reporter verbose".to_string()),
+                            fail_regex_template: Some(r"\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
+                            pass_regex_template: Some(r"\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
+                            work_dir: Some(config.out_dir.clone()),
+                    });
+
+                    Ok(Self {
+                    id: id.to_string(),
+                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
+                    suite_file_name_template:
+                        "{{ suite.name | convert_case('Snake') }}.test.ts".to_string(),
+                    out_dir: config_root.join(&config.out_dir),
+                    suite_template:
+                        include_str!("../templates/vitest/suite.ts.jinja").to_string(),
+                    group_template:
+                        include_str!("../templates/vitest/group.ts.jinja").to_string(),
+                    test_template: include_str!("../templates/vitest/test.ts.jinja").to_string(),
+                    runners: Runner::from_configs(
+                            default_runner_cfgs,
+                            &config.runners.clone().unwrap_or_default(),
+                            &config_root.join(&config.out_dir)
+                        )?,
+                    })
+                },
                 "swift" => {
                     let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
 
