@@ -528,6 +528,10 @@ impl Test {
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
+    /// Path to the config file
+    #[arg(short, long, default_value = "polytest.toml")]
+    config: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -586,7 +590,7 @@ struct ActiveRunner {
 
 fn main() -> Result<()> {
     let parsed = Cli::parse();
-    let config_meta = ConfigMeta::from_file("polytest.toml")?;
+    let config_meta = ConfigMeta::from_file(&parsed.config)?;
 
     let mut env = minijinja::Environment::new();
     env.add_filter("convert_case", convert_case_filter);
