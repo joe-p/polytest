@@ -191,7 +191,7 @@ impl Document {
     fn from_config(config: &DocumentConfig, id: &str, config_root: &Path) -> Result<Self> {
         match id {
             "markdown" => Ok(Self {
-                out_file: config.out_file.clone(),
+                out_file: config_root.join(&config.out_file),
                 template: config.template.clone().unwrap_or_else(|| {
                     include_str!("../templates/markdown/plan.md.jinja").to_string()
                 }),
@@ -208,7 +208,7 @@ impl Document {
                     .context(format!("failed to read template file for {}", id))?;
 
                 Ok(Self {
-                    out_file: config.out_file.clone(),
+                    out_file: config_root.join(&config.out_file),
                     template,
                 })
             }
