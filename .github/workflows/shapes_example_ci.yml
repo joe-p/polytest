@@ -34,6 +34,9 @@ jobs:
       with:
         bun-version: latest
 
+    - name: Setup pnpm
+      run: npm i -g pnpm
+
     # Install implementation dependencies
     - name: Install Python dependencies
       run: |
@@ -49,6 +52,11 @@ jobs:
       run: |
         cd examples/shapes/implementations/bun
         bun install
+
+    - name: Install vitest dependencies
+      run: |
+          cd examples/shapes/implementations/vitest
+          pnpm install
 
     - name: Cargo build
       run: cargo build
