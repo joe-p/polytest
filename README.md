@@ -9,7 +9,7 @@ Polytest is a language-agnostic tool for generating test scaffolding and keeping
 - Validate all test cases are implemented
 - Validate no tests are implemented that are not in the test plan
 - Generation, validation, and execution of tests for any language or test framework via minijinja templates
-- Out of the box support for Python (`pytest`), TypeScript (`bun test`), and Swift (`Testing` and `xcodebuild test`) test generation, validation, and execution
+- Out of the box support for Python (`pytest`), TypeScript (`bun test` and `vitest`), and Swift (`Testing` and `xcodebuild test`) test generation, validation, and execution
 - Out of the box support for markdown test plan generation
 
 ## Installation
