@@ -1,0 +1,106 @@
+{
+  // Test comment
+  "name": "Shapes Test Plan",
+  "package_name": "shapes",
+  "suite": {
+    "circle": {
+      "groups": ["shape", "circle"]
+    },
+    "rectangle": {
+      "groups": ["shape", "polygon", "rectangle"]
+    },
+    "triangle": {
+      "groups": ["shape", "polygon"]
+    }
+  },
+  "group": {
+    "polygon": {
+      "desc": "Tests that only apply to polygons",
+      "test": {
+        "vertex_count": {
+          "desc": "A polygon should accurately count the number of verticies it contains"
+        },
+        "edge_count": {
+          "desc": "A polygon should accurately count the number of edges it contains"
+        }
+      }
+    },
+    "rectangle": {
+      "desc": "Tests that apply only to rectangles, a subset of polygons",
+      "test": {
+        "is_square": {
+          "desc": "A rectangle should be able to accurately determine if it is a square"
+        }
+      }
+    },
+    "shape": {
+      "desc": "Tests that apply to any shape. A shape is a polygon OR a circle",
+      "test": {
+        "area": {
+          "desc": "A shape should be able to accurately calculate its area"
+        },
+        "perimeter": {
+          "desc": "A shape should be able to accurately calculate its perimeter (or circumference)"
+        }
+      }
+    },
+    "circle": {
+      "desc": "Tests that only apply to a circle",
+      "test": {
+        "radius": {
+          "desc": "A circle should be able to accurately calculate its radius"
+        },
+        "diameter": {
+          "desc": "A circle should be able to accurately calculate its diameter"
+        },
+        "non_numeric": {
+          "desc": "Using a non-numeric radius should throw an error",
+          "exclude_targets": ["swift"]
+        }
+      }
+    }
+  },
+  "target": {
+    "pytest": {
+      "out_dir": "./implementations/python/tests"
+    },
+    "bun": {
+      "out_dir": "./implementations/bun/__tests__"
+    },
+    "vitest": {
+      "out_dir": "./implementations/vitest/__tests__"
+    },
+    "swift": {
+      "out_dir": "./implementations/swift/Tests/ShapesTests",
+      "runner": {
+        "Catalyst": {
+          "command": "xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination 'platform=macOS,variant=Mac Catalyst'"
+        }
+      }
+    }
+  },
+  "custom_target": {
+    "minitest_unit": {
+      "out_dir": "./implementations/ruby/test",
+      "suite_file_name_template": "test_{{ suite.name | convert_case('Snake') }}.rb",
+      "test_regex_template": "def test_{{ name | convert_case('Snake') }}",
+      "template_dir": "./templates/minitest_unit",
+      "runner": {
+        "rake test": {
+          "command": "bundle exec rake test A='--verbose'",
+          "fail_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)",
+          "pass_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
+        }
+      }
+    }
+  },
+  "document": {
+    "markdown": {
+      "out_file": "./documents/plan.md"
+    },
+    "test_cases_csv": {
+      "out_file": "./documents/test_cases.csv",
+      "template": "./templates/test_cases.csv.jinja"
+    }
+  }
+}

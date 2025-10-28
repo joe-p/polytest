@@ -1,6 +1,6 @@
 # Polytest Configuration
 
-Polytest is configured via a TOML configuration file named `polytest.toml` by default. All Polytest configuration, including test suite definitions, is done via this file. This file is the one source of truth for Polytest, ensuring there is no confusion about the current state of the test plan.
+Polytest is configured via a configuration file named `polytest.toml` or `polytest.json` by default. The configuration file can be in TOML or JSON format. All Polytest configuration, including test suite definitions, is done via this file. This file is the one source of truth for Polytest, ensuring there is no confusion about the current state of the test plan.
 
 ## name
 
@@ -8,8 +8,10 @@ The test plan is named via the `name` field. This is generally only used for dis
 
 ### Example
 
-```toml
-name = "Shapes Test Plan"
+```json
+{
+  "name": "Shapes Test Plan"
+}
 ```
 
 ## package_name
@@ -18,32 +20,37 @@ The `package_name` defines the name of the package being tested. This is primari
 
 ## suite.\<SUITE_NAME>
 
-Test suites are a collection of tests. For most implementations this roughly maps to the tests in a single file. Test cases are defined under the `suite` table.
+Test suites are a collection of tests. For most implementations this roughly maps to the tests in a single file. Test cases are defined under the `suite` object.
 
 ### Fields
 
 #### desc
 
-The `desc` field within a suite table is used to describe the suite.
+The `desc` field within a suite object is used to describe the suite.
 
 #### groups
 
-The `groups` field within a suite table is used to define the test groups that belong to the suite.
+The `groups` field within a suite object is used to define the test groups that belong to the suite.
 
 ### Example
 
-```toml
-[suite.circle]
-desc = "A circle is a shape defined by all points on a plane that are equidistant from a given point"
-groups = ["shape", "circle"]
-
-[suite.rectangle]
-desc = "A rectangle is a polygon with four right angles"
-groups = ["shape", "polygon", "rectangle"]
-
-[suite.triangle]
-desc = "A triangle is a polygon with three edges"
-groups = ["shape", "polygon"]
+```json
+{
+  "suite": {
+    "circle": {
+      "desc": "A circle is a shape defined by all points on a plane that are equidistant from a given point",
+      "groups": ["shape", "circle"]
+    },
+    "rectangle": {
+      "desc": "A rectangle is a polygon with four right angles",
+      "groups": ["shape", "polygon", "rectangle"]
+    },
+    "triangle": {
+      "desc": "A triangle is a polygon with three edges",
+      "groups": ["shape", "polygon"]
+    }
+  }
+}
 ```
 
 ## group.\<GROUP_NAME>
@@ -54,18 +61,23 @@ Groups are a collection of test cases that typically share something in common. 
 
 #### desc
 
-The `desc` field within a group table is used to describe the group.
+The `desc` field within a group object is used to describe the group.
 
 ### Example
 
-```toml
-[group.polygon]
-desc = "Tests that only apply to polygons"
+```json
+{
+  "group": {
+    "polygon": {
+      "desc": "Tests that only apply to polygons"
+    }
+  }
+}
 ```
 
 ## group.\<GROUP_NAME>.test.\<TEST_NAME>
 
-Test cases are defined under the `test` table within a `group`. These map to one test case that will have a pass or fail status when ran.
+Test cases are defined under the `test` object within a `group`. These map to one test case that will have a pass or fail status when ran.
 
 ### Fields
 
@@ -75,17 +87,26 @@ The `desc` field describes what is being tested.
 
 ### Example
 
-```toml
-[group.polygon.test.vertex_count]
-desc = "A polygon should accurately count the number of verticies it contains"
-
-[group.polygon.test.edge_count]
-desc = "A polygon should accurately count the number of edges it contains"
+```json
+{
+  "group": {
+    "polygon": {
+      "test": {
+        "vertex_count": {
+          "desc": "A polygon should accurately count the number of verticies it contains"
+        },
+        "edge_count": {
+          "desc": "A polygon should accurately count the number of edges it contains"
+        }
+      }
+    }
+  }
+}
 ```
 
 ## target.\<TARGET_NAME>
 
-Test targets are defined under the `target` table. Test targets are the testting frameworks for the implementations (i.e. `pytest` for python).
+Test targets are defined under the `target` object. Test targets are the testting frameworks for the implementations (i.e. `pytest` for python).
 
 ### Supported Targets
 
@@ -102,17 +123,22 @@ The `out_dir` field is used to define the output directory for the generated tes
 
 ### Examples
 
-```toml
-[target.pytest]
-out_dir = "./implementations/python/tests"
-
-[target.bun]
-out_dir = "./implementations/bun/__tests__"
+```json
+{
+  "target": {
+    "pytest": {
+      "out_dir": "./implementations/python/tests"
+    },
+    "bun": {
+      "out_dir": "./implementations/bun/__tests__"
+    }
+  }
+}
 ```
 
 ## custom_target.\<CUSTOM_TARGET_NAME>
 
-Custom test targets can be defined under the `custom_target` table. Custom targets give you full control of scaffolding templates, test execution, and parsing.
+Custom test targets can be defined under the `custom_target` object. Custom targets give you full control of scaffolding templates, test execution, and parsing.
 
 ### Fields
 
@@ -152,7 +178,7 @@ See [templates documentation](./templates.md) for more information on the expect
 
 ## custom_target.\<CUSTOM_TARGET_NAME>.runner.\<RUNNER_NAME>
 
-`runner` is a table that defines how to run the test suites and parse the results. There can be multiple runners defined for one target (for example, testing multiple platforms).
+`runner` is an object that defines how to run the test suites and parse the results. There can be multiple runners defined for one target (for example, testing multiple platforms).
 
 Each runner will inherit the fields of the previously-defined runner if they are not defined.
 
@@ -194,12 +220,20 @@ The variables available for use in the template. See [templates documentation](.
 
 ### Example
 
-```toml
-[custom_target.minitest_unit.runner."rake test"]
-command = "bundle exec rake test A='--verbose'"
-
-fail_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)"
-pass_regex_template = "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
+```json
+{
+  "custom_target": {
+    "minitest_unit": {
+      "runner": {
+        "rake test": {
+          "command": "bundle exec rake test A='--verbose'",
+          "fail_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)",
+          "pass_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
+        }
+      }
+    }
+  }
+}
 ```
 
 ## document.\<DOCUMENT_NAME>
@@ -225,13 +259,18 @@ If not given, use the default template for the given name. If given, it is the p
 
 ### Example
 
-```toml
-[document.markdown]
-out_file = "./documents/plan.md"
-
-[document.test_cases_csv]
-out_file = "./documents/test_cases.csv"
-template = "./templates/test_cases.csv.jinja"
+```json
+{
+  "document": {
+    "markdown": {
+      "out_file": "./documents/plan.md"
+    },
+    "test_cases_csv": {
+      "out_file": "./documents/test_cases.csv",
+      "template": "./templates/test_cases.csv.jinja"
+    }
+  }
+}
 ```
 
 ### Example Template
