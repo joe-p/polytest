@@ -9,6 +9,7 @@ use json_comments::StripComments;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -16,6 +17,73 @@ use std::process::ExitStatus;
 
 const GROUP_COMMENT: &str = "Polytest Group:";
 const SUITE_COMMENT: &str = "Polytest Suite:";
+
+enum DefaultTarget {
+    Pytest,
+    Bun,
+    Vitest,
+    Swift,
+}
+
+impl TryFrom<&str> for DefaultTarget {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "pytest" => Ok(DefaultTarget::Pytest),
+            "bun" => Ok(DefaultTarget::Bun),
+            "vitest" => Ok(DefaultTarget::Vitest),
+            "swift" => Ok(DefaultTarget::Swift),
+            _ => Err(anyhow!("Unsupported default target: {}", value)),
+        }
+    }
+}
+
+impl Display for DefaultTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            DefaultTarget::Pytest => "pytest",
+            DefaultTarget::Bun => "bun",
+            DefaultTarget::Vitest => "vitest",
+            DefaultTarget::Swift => "swift",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+enum TemplateType {
+    Suite,
+    Group,
+    Test,
+}
+
+impl DefaultTarget {
+    fn get_template_content(&self, tmpl_type: TemplateType) -> String {
+        (match self {
+            DefaultTarget::Pytest => match tmpl_type {
+                TemplateType::Suite => include_str!("../templates/pytest/suite.py.jinja"),
+                TemplateType::Group => include_str!("../templates/pytest/group.py.jinja"),
+                TemplateType::Test => include_str!("../templates/pytest/test.py.jinja"),
+            },
+            DefaultTarget::Bun => match tmpl_type {
+                TemplateType::Suite => include_str!("../templates/bun/suite.ts.jinja"),
+                TemplateType::Group => include_str!("../templates/bun/group.ts.jinja"),
+                TemplateType::Test => include_str!("../templates/bun/test.ts.jinja"),
+            },
+            DefaultTarget::Vitest => match tmpl_type {
+                TemplateType::Suite => include_str!("../templates/vitest/suite.ts.jinja"),
+                TemplateType::Group => include_str!("../templates/vitest/group.ts.jinja"),
+                TemplateType::Test => include_str!("../templates/vitest/test.ts.jinja"),
+            },
+            DefaultTarget::Swift => match tmpl_type {
+                TemplateType::Suite => include_str!("../templates/swift/suite.swift.jinja"),
+                TemplateType::Group => include_str!("../templates/swift/group.swift.jinja"),
+                TemplateType::Test => include_str!("../templates/swift/test.swift.jinja"),
+            },
+        })
+        .to_string()
+    }
+}
 
 fn get_group_comment(group: &str) -> String {
     format!("{} {}", GROUP_COMMENT, group)
@@ -233,45 +301,49 @@ fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBu
 
 impl Target {
     fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
-        match id {
-                "pytest" => {
-                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
+        let target = DefaultTarget::try_from(id)?;
+        match target {
+            DefaultTarget::Pytest => {
+                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
 
-                    default_runner_cfgs.insert("pytest -v".to_string(), RunnerConfig {
-                            env: None,
-                            command: Some("pytest -v".to_string()),
-                            fail_regex_template:
-                                Some("{{ file_name }}::test_{{ test_name | convert_case('Snake') }} FAILED".to_string()),
-                            pass_regex_template:
-                                Some("{{ file_name }}::test_{{ test_name | convert_case('Snake') }} PASSED".to_string()),
-                            work_dir: Some(config.out_dir.clone()),
-                    });
+                default_runner_cfgs.insert(
+                    "pytest -v".to_string(),
+                    RunnerConfig {
+                        env: None,
+                        command: Some("pytest -v".to_string()),
+                        fail_regex_template: Some(
+                            "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} FAILED"
+                                .to_string(),
+                        ),
+                        pass_regex_template: Some(
+                            "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} PASSED"
+                                .to_string(),
+                        ),
+                        work_dir: Some(config.out_dir.clone()),
+                    },
+                );
 
-                    Ok(Self {
-                        id: id.to_string(),
-                        test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
-                            .to_string(),
-                        suite_file_name_template:
-                            "test_{{ suite.name | convert_case('Snake') }}.py".to_string(),
-                        out_dir: config_root.join(&config.out_dir),
-                        suite_template: include_str!("../templates/pytest/suite.py.jinja")
-                            .to_string(),
-                        group_template: include_str!("../templates/pytest/group.py.jinja")
-                            .to_string(),
-                        test_template: include_str!("../templates/pytest/test.py.jinja")
-                            .to_string(),
-                        runners: Runner::from_configs(
-                            default_runner_cfgs,
-                            &config.runners.clone().unwrap_or_default(),
-                            &config_root.join(&config.out_dir)
-                        )?,
-                    })
-                }
-                "bun" => {
+                Ok(Self {
+                    id: id.to_string(),
+                    test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
+                        .to_string(),
+                    suite_file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
+                        .to_string(),
+                    out_dir: config_root.join(&config.out_dir),
+                    suite_template: target.get_template_content(TemplateType::Suite),
+                    group_template: target.get_template_content(TemplateType::Group),
+                    test_template: target.get_template_content(TemplateType::Test),
+                    runners: Runner::from_configs(
+                        default_runner_cfgs,
+                        &config.runners.clone().unwrap_or_default(),
+                        &config_root.join(&config.out_dir),
+                    )?,
+                })
+            }
+            DefaultTarget::Bun => {
+                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
 
-                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
-
-                    default_runner_cfgs.insert("bun test".to_string(), RunnerConfig {
+                default_runner_cfgs.insert("bun test".to_string(), RunnerConfig {
                             env: None,
                             command: Some("bun test".to_string()),
                             fail_regex_template: Some(r"\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
@@ -279,29 +351,26 @@ impl Target {
                             work_dir: Some(config.out_dir.clone()),
                     });
 
-                    Ok(Self {
+                Ok(Self {
                     id: id.to_string(),
                     test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
-                    suite_file_name_template:
-                        "{{ suite.name | convert_case('Snake') }}.test.ts".to_string(),
+                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
+                        .to_string(),
                     out_dir: config_root.join(&config.out_dir),
-                    suite_template:
-                        include_str!("../templates/bun/suite.ts.jinja").to_string(),
-                    group_template:
-                        include_str!("../templates/bun/group.ts.jinja").to_string(),
-                    test_template: include_str!("../templates/bun/test.ts.jinja").to_string(),
+                    suite_template: target.get_template_content(TemplateType::Suite),
+                    group_template: target.get_template_content(TemplateType::Group),
+                    test_template: target.get_template_content(TemplateType::Test),
                     runners: Runner::from_configs(
-                            default_runner_cfgs,
-                            &config.runners.clone().unwrap_or_default(),
-                            &config_root.join(&config.out_dir)
-                        )?,
-                    })
-                },
-                "vitest" => {
+                        default_runner_cfgs,
+                        &config.runners.clone().unwrap_or_default(),
+                        &config_root.join(&config.out_dir),
+                    )?,
+                })
+            }
+            DefaultTarget::Vitest => {
+                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
 
-                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
-
-                    default_runner_cfgs.insert("vitest".to_string(), RunnerConfig {
+                default_runner_cfgs.insert("vitest".to_string(), RunnerConfig {
                             env: None,
                             command: Some("npx vitest run --no-color --reporter verbose".to_string()),
                             fail_regex_template: Some(r"FAIL  {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}".to_string()),
@@ -309,29 +378,27 @@ impl Target {
                             work_dir: Some(config.out_dir.clone()),
                     });
 
-                    Ok(Self {
+                Ok(Self {
                     id: id.to_string(),
                     test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
-                    suite_file_name_template:
-                        "{{ suite.name | convert_case('Snake') }}.test.ts".to_string(),
+                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
+                        .to_string(),
                     out_dir: config_root.join(&config.out_dir),
-                    suite_template:
-                        include_str!("../templates/vitest/suite.ts.jinja").to_string(),
-                    group_template:
-                        include_str!("../templates/vitest/group.ts.jinja").to_string(),
-                    test_template: include_str!("../templates/vitest/test.ts.jinja").to_string(),
+                    suite_template: target.get_template_content(TemplateType::Suite),
+                    group_template: target.get_template_content(TemplateType::Group),
+                    test_template: target.get_template_content(TemplateType::Test),
                     runners: Runner::from_configs(
-                            default_runner_cfgs,
-                            &config.runners.clone().unwrap_or_default(),
-                            &config_root.join(&config.out_dir)
-                        )?,
-                    })
-                },
-                "swift" => {
-                    let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
+                        default_runner_cfgs,
+                        &config.runners.clone().unwrap_or_default(),
+                        &config_root.join(&config.out_dir),
+                    )?,
+                })
+            }
+            DefaultTarget::Swift => {
+                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
 
-                    let fail = r#"Failing tests:(.|\W)*{{ (suite_name + " " + test_name) | convert_case('Camel') }}\(\)(.|\W)*** TEST FAILED **"#;
-                    default_runner_cfgs.insert("macOS".to_string(), RunnerConfig {
+                let fail = r#"Failing tests:(.|\W)*{{ (suite_name + " " + test_name) | convert_case('Camel') }}\(\)(.|\W)*** TEST FAILED **"#;
+                default_runner_cfgs.insert("macOS".to_string(), RunnerConfig {
                             env: None,
                             command: Some(r#"xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination "platform=macOS""#.to_string()),
                             pass_regex_template: Some(r#""{{ suite_name }}: {{ test_name }}" passed"#.to_string()),
@@ -339,29 +406,23 @@ impl Target {
                             work_dir: Some(config.out_dir.parent().expect("parent should always exist").parent().expect("parent should always exist").to_owned()),
                     });
 
-
-                    Ok(Self {
+                Ok(Self {
                     id: id.to_string(),
                     test_regex_template: r#"(?m)@Test\(".+: {{ name }}""#.to_string(),
                     suite_file_name_template:
                         "{{ suite.name | convert_case('Pascal') }}Tests.swift".to_string(),
                     out_dir: config_root.join(&config.out_dir),
-                    suite_template:
-                        include_str!("../templates/swift/suite.swift.jinja").to_string(),
-                    group_template:
-                        include_str!("../templates/swift/group.swift.jinja").to_string(),
-                    test_template: include_str!("../templates/swift/test.swift.jinja").to_string(),
+                    suite_template: target.get_template_content(TemplateType::Suite),
+                    group_template: target.get_template_content(TemplateType::Group),
+                    test_template: target.get_template_content(TemplateType::Test),
                     runners: Runner::from_configs(
-                            default_runner_cfgs,
-                            &config.runners.clone().unwrap_or_default(),
-                            &config_root.join(&config.out_dir)
-                        )?,
-                    })
-                },
-                _ => {
-                    Err(anyhow!("config defined for target {} but this is not a supported target. Perhaps you meant to use custom_target?", id))
-                }
+                        default_runner_cfgs,
+                        &config.runners.clone().unwrap_or_default(),
+                        &config_root.join(&config.out_dir),
+                    )?,
+                })
             }
+        }
     }
 
     pub fn from_custom_config(
