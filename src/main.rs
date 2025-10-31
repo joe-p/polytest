@@ -269,7 +269,7 @@ impl ConfigMeta {
     }
 }
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 struct RunnerConfig {
     command: Option<String>,
     fail_regex_template: Option<String>,
@@ -587,7 +587,7 @@ impl DefaultRunner {
     }
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct CustomTargetConfig {
     out_dir: PathBuf,
 
@@ -597,6 +597,33 @@ struct CustomTargetConfig {
 
     #[serde(rename = "runner")]
     runners: IndexMap<String, RunnerConfig>,
+}
+
+impl From<Target> for CustomTargetConfig {
+    fn from(target: Target) -> Self {
+        Self {
+            out_dir: target.out_dir,
+            test_regex_template: target.test_regex_template,
+            suite_file_name_template: target.suite_file_name_template,
+            template_dir: PathBuf::from(""),
+            runners: target
+                .runners
+                .into_iter()
+                .map(|(id, runner)| {
+                    (
+                        id,
+                        RunnerConfig {
+                            command: Some(runner.command),
+                            fail_regex_template: Some(runner.fail_regex_template),
+                            pass_regex_template: Some(runner.pass_regex_template),
+                            env: runner.env,
+                            work_dir: Some(runner.work_dir),
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -704,6 +731,9 @@ enum Commands {
 
     /// Run tests
     Run(Run),
+
+    /// Dump default target configurations
+    DumpDefaultTargets,
 }
 
 #[derive(Args)]
@@ -844,6 +874,32 @@ fn main() -> Result<()> {
     });
 
     match parsed.command {
+        Commands::DumpDefaultTargets => {
+            let default_targets = vec![
+                DefaultTarget::Pytest,
+                DefaultTarget::Bun,
+                DefaultTarget::Vitest,
+                DefaultTarget::Swift,
+            ];
+
+            let mut custom_target_configs = IndexMap::<String, CustomTargetConfig>::new();
+            for default_target in default_targets {
+                let target = default_target.build_target(
+                    &default_target.to_string(),
+                    &TargetConfig {
+                        out_dir: PathBuf::from("tests/generated"),
+                        runners: None,
+                    },
+                    &config_meta.root_dir,
+                )?;
+                let custom_target_config: CustomTargetConfig = target.into();
+                custom_target_configs.insert(default_target.to_string(), custom_target_config);
+            }
+
+            let serialized = serde_json::to_string_pretty(&custom_target_configs)
+                .context("failed to serialize default target config")?;
+            println!("{}", serialized);
+        }
         Commands::Generate(generate) => {
             let targets = match generate.target {
                 Some(target_ids) => all_targets
