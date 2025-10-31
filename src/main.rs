@@ -58,6 +58,115 @@ enum TemplateType {
 }
 
 impl DefaultTarget {
+    fn default_runners(&self) -> Vec<DefaultRunner> {
+        match self {
+            DefaultTarget::Pytest => vec![DefaultRunner::Pytest],
+            DefaultTarget::Bun => vec![DefaultRunner::BunTest],
+            DefaultTarget::Vitest => vec![DefaultRunner::Vitest],
+            DefaultTarget::Swift => vec![DefaultRunner::XcodebuildMacOS],
+        }
+    }
+
+    fn build_target(&self, id: &str, config: &TargetConfig, config_root: &Path) -> Result<Target> {
+        let runner_overrides = config.runners.clone().unwrap_or_default();
+
+        match self {
+            DefaultTarget::Pytest => {
+                let target_out_dir = config_root.join(&config.out_dir);
+                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
+                    .default_runners()
+                    .into_iter()
+                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
+                    .collect();
+
+                let runners =
+                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
+
+                Ok(Target {
+                    id: id.to_string(),
+                    test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
+                        .to_string(),
+                    suite_file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
+                        .to_string(),
+                    out_dir: target_out_dir,
+                    suite_template: self.get_template_content(TemplateType::Suite),
+                    group_template: self.get_template_content(TemplateType::Group),
+                    test_template: self.get_template_content(TemplateType::Test),
+                    runners,
+                })
+            }
+            DefaultTarget::Bun => {
+                let target_out_dir = config_root.join(&config.out_dir);
+                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
+                    .default_runners()
+                    .into_iter()
+                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
+                    .collect();
+
+                let runners =
+                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
+
+                Ok(Target {
+                    id: id.to_string(),
+                    test_regex_template: r#"(?m)test\("{{ name }}",#"#.to_string(),
+                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
+                        .to_string(),
+                    out_dir: target_out_dir,
+                    suite_template: self.get_template_content(TemplateType::Suite),
+                    group_template: self.get_template_content(TemplateType::Group),
+                    test_template: self.get_template_content(TemplateType::Test),
+                    runners,
+                })
+            }
+            DefaultTarget::Vitest => {
+                let target_out_dir = config_root.join(&config.out_dir);
+                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
+                    .default_runners()
+                    .into_iter()
+                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
+                    .collect();
+
+                let runners =
+                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
+
+                Ok(Target {
+                    id: id.to_string(),
+                    test_regex_template: r#"(?m)test\("{{ name }}",#"#.to_string(),
+                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
+                        .to_string(),
+                    out_dir: target_out_dir,
+                    suite_template: self.get_template_content(TemplateType::Suite),
+                    group_template: self.get_template_content(TemplateType::Group),
+                    test_template: self.get_template_content(TemplateType::Test),
+                    runners,
+                })
+            }
+            DefaultTarget::Swift => {
+                let target_out_dir = config_root.join(&config.out_dir);
+                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
+                    .default_runners()
+                    .into_iter()
+                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
+                    .collect();
+
+                let runners =
+                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
+
+                Ok(Target {
+                    id: id.to_string(),
+                    test_regex_template: r#"(?m)@Test\(".+: {{ name }}""#.to_string(),
+                    suite_file_name_template:
+                        "{{ suite.name | convert_case('Pascal') }}Tests.swift".to_string(),
+                    out_dir: target_out_dir,
+                    suite_template: self.get_template_content(TemplateType::Suite),
+                    group_template: self.get_template_content(TemplateType::Group),
+                    test_template: self.get_template_content(TemplateType::Test),
+                    runners,
+                })
+            }
+        }
+    }
+
     fn get_template_content(&self, tmpl_type: TemplateType) -> String {
         (match self {
             DefaultTarget::Pytest => match tmpl_type {
@@ -167,6 +276,25 @@ struct RunnerConfig {
     pass_regex_template: Option<String>,
     env: Option<HashMap<String, String>>,
     work_dir: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+struct DefaultRunnerConfig {
+    id: String,
+    config: RunnerConfig,
+}
+
+impl DefaultRunnerConfig {
+    fn into_pair(self) -> (String, RunnerConfig) {
+        (self.id, self.config)
+    }
+}
+
+enum DefaultRunner {
+    Pytest,
+    BunTest,
+    Vitest,
+    XcodebuildMacOS,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -301,128 +429,8 @@ fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBu
 
 impl Target {
     fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
-        let target = DefaultTarget::try_from(id)?;
-        match target {
-            DefaultTarget::Pytest => {
-                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
-
-                default_runner_cfgs.insert(
-                    "pytest -v".to_string(),
-                    RunnerConfig {
-                        env: None,
-                        command: Some("pytest -v".to_string()),
-                        fail_regex_template: Some(
-                            "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} FAILED"
-                                .to_string(),
-                        ),
-                        pass_regex_template: Some(
-                            "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} PASSED"
-                                .to_string(),
-                        ),
-                        work_dir: Some(config.out_dir.clone()),
-                    },
-                );
-
-                Ok(Self {
-                    id: id.to_string(),
-                    test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
-                        .to_string(),
-                    suite_file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
-                        .to_string(),
-                    out_dir: config_root.join(&config.out_dir),
-                    suite_template: target.get_template_content(TemplateType::Suite),
-                    group_template: target.get_template_content(TemplateType::Group),
-                    test_template: target.get_template_content(TemplateType::Test),
-                    runners: Runner::from_configs(
-                        default_runner_cfgs,
-                        &config.runners.clone().unwrap_or_default(),
-                        &config_root.join(&config.out_dir),
-                    )?,
-                })
-            }
-            DefaultTarget::Bun => {
-                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
-
-                default_runner_cfgs.insert("bun test".to_string(), RunnerConfig {
-                            env: None,
-                            command: Some("bun test".to_string()),
-                            fail_regex_template: Some(r"\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
-                            pass_regex_template: Some(r"\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
-                            work_dir: Some(config.out_dir.clone()),
-                    });
-
-                Ok(Self {
-                    id: id.to_string(),
-                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
-                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
-                        .to_string(),
-                    out_dir: config_root.join(&config.out_dir),
-                    suite_template: target.get_template_content(TemplateType::Suite),
-                    group_template: target.get_template_content(TemplateType::Group),
-                    test_template: target.get_template_content(TemplateType::Test),
-                    runners: Runner::from_configs(
-                        default_runner_cfgs,
-                        &config.runners.clone().unwrap_or_default(),
-                        &config_root.join(&config.out_dir),
-                    )?,
-                })
-            }
-            DefaultTarget::Vitest => {
-                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
-
-                default_runner_cfgs.insert("vitest".to_string(), RunnerConfig {
-                            env: None,
-                            command: Some("npx vitest run --no-color --reporter verbose".to_string()),
-                            fail_regex_template: Some(r"FAIL  {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}".to_string()),
-                            pass_regex_template: Some(r"✓ {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}".to_string()),
-                            work_dir: Some(config.out_dir.clone()),
-                    });
-
-                Ok(Self {
-                    id: id.to_string(),
-                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
-                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
-                        .to_string(),
-                    out_dir: config_root.join(&config.out_dir),
-                    suite_template: target.get_template_content(TemplateType::Suite),
-                    group_template: target.get_template_content(TemplateType::Group),
-                    test_template: target.get_template_content(TemplateType::Test),
-                    runners: Runner::from_configs(
-                        default_runner_cfgs,
-                        &config.runners.clone().unwrap_or_default(),
-                        &config_root.join(&config.out_dir),
-                    )?,
-                })
-            }
-            DefaultTarget::Swift => {
-                let mut default_runner_cfgs: IndexMap<String, RunnerConfig> = IndexMap::new();
-
-                let fail = r#"Failing tests:(.|\W)*{{ (suite_name + " " + test_name) | convert_case('Camel') }}\(\)(.|\W)*** TEST FAILED **"#;
-                default_runner_cfgs.insert("macOS".to_string(), RunnerConfig {
-                            env: None,
-                            command: Some(r#"xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination "platform=macOS""#.to_string()),
-                            pass_regex_template: Some(r#""{{ suite_name }}: {{ test_name }}" passed"#.to_string()),
-                            fail_regex_template: Some(fail.to_string()),
-                            work_dir: Some(config.out_dir.parent().expect("parent should always exist").parent().expect("parent should always exist").to_owned()),
-                    });
-
-                Ok(Self {
-                    id: id.to_string(),
-                    test_regex_template: r#"(?m)@Test\(".+: {{ name }}""#.to_string(),
-                    suite_file_name_template:
-                        "{{ suite.name | convert_case('Pascal') }}Tests.swift".to_string(),
-                    out_dir: config_root.join(&config.out_dir),
-                    suite_template: target.get_template_content(TemplateType::Suite),
-                    group_template: target.get_template_content(TemplateType::Group),
-                    test_template: target.get_template_content(TemplateType::Test),
-                    runners: Runner::from_configs(
-                        default_runner_cfgs,
-                        &config.runners.clone().unwrap_or_default(),
-                        &config_root.join(&config.out_dir),
-                    )?,
-                })
-            }
-        }
+        let default_target = DefaultTarget::try_from(id)?;
+        default_target.build_target(id, config, config_root)
     }
 
     pub fn from_custom_config(
@@ -495,6 +503,88 @@ struct TargetConfig {
 
     #[serde(rename = "runner")]
     runners: Option<IndexMap<String, RunnerConfig>>,
+}
+
+impl DefaultRunner {
+    fn get_default_config(&self, target_config: &TargetConfig) -> DefaultRunnerConfig {
+        match self {
+            DefaultRunner::Pytest => DefaultRunnerConfig {
+                id: "pytest -v".to_string(),
+                config: RunnerConfig {
+                    env: None,
+                    command: Some("pytest -v".to_string()),
+                    fail_regex_template: Some(
+                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} FAILED"
+                            .to_string(),
+                    ),
+                    pass_regex_template: Some(
+                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} PASSED"
+                            .to_string(),
+                    ),
+                    work_dir: Some(target_config.out_dir.clone()),
+                },
+            },
+            DefaultRunner::BunTest => DefaultRunnerConfig {
+                id: "bun test".to_string(),
+                config: RunnerConfig {
+                    env: None,
+                    command: Some("bun test".to_string()),
+                    fail_regex_template: Some(
+                        r"\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$"
+                            .to_string(),
+                    ),
+                    pass_regex_template: Some(
+                        r"\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$"
+                            .to_string(),
+                    ),
+                    work_dir: Some(target_config.out_dir.clone()),
+                },
+            },
+            DefaultRunner::Vitest => DefaultRunnerConfig {
+                id: "vitest".to_string(),
+                config: RunnerConfig {
+                    env: None,
+                    command: Some("npx vitest run --no-color --reporter verbose".to_string()),
+                    fail_regex_template: Some(
+                        "FAIL  {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}"
+                            .to_string(),
+                    ),
+                    pass_regex_template: Some(
+                        "✓ {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}"
+                            .to_string(),
+                    ),
+                    work_dir: Some(target_config.out_dir.clone()),
+                },
+            },
+            DefaultRunner::XcodebuildMacOS => {
+                let work_dir = target_config
+                    .out_dir
+                    .parent()
+                    .and_then(|p| p.parent())
+                    .expect("parent should always exist")
+                    .to_path_buf();
+
+                DefaultRunnerConfig {
+                    id: "macOS".to_string(),
+                    config: RunnerConfig {
+                        env: None,
+                        command: Some(
+                            r#"xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination "platform=macOS""#
+                                .to_string(),
+                        ),
+                        pass_regex_template: Some(
+                            r#""{{ suite_name }}: {{ test_name }}" passed"#.to_string(),
+                        ),
+                        fail_regex_template: Some(
+                            r#"Failing tests:(.|\W)*{{ (suite_name + " " + test_name) | convert_case('Camel') }}\(\)(.|\W)*** TEST FAILED **"#
+                                .to_string(),
+                        ),
+                        work_dir: Some(work_dir),
+                    },
+                }
+            }
+        }
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]
