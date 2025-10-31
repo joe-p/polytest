@@ -304,8 +304,8 @@ impl Target {
                     default_runner_cfgs.insert("vitest".to_string(), RunnerConfig {
                             env: None,
                             command: Some("npx vitest run --no-color --reporter verbose".to_string()),
-                            fail_regex_template: Some(r"\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
-                            pass_regex_template: Some(r"\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$".to_string()),
+                            fail_regex_template: Some(r"FAIL  {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}".to_string()),
+                            pass_regex_template: Some(r"✓ {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}".to_string()),
                             work_dir: Some(config.out_dir.clone()),
                     });
 
@@ -887,12 +887,14 @@ fn main() -> Result<()> {
                                     if !pass_regex.is_match(&outputs[&target_runner]) {
                                         fails.push(
                                             format!(
-                                                "  {} ({}) > {} > {} > {}: UNKNOWN",
+                                                "  {} ({}) > {} > {} > {}: UNKNOWN: could not find either regex:\n    FAIL REGEX: {}\n    PASS REGEX: {}",
                                                 target_id,
                                                 runner_id,
                                                 suite.name,
                                                 group.name,
-                                                test.name
+                                                test.name,
+                                                fail_regex.as_str(),
+                                                pass_regex.as_str()
                                             )
                                             .to_string(),
                                         );
