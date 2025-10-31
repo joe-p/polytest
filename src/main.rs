@@ -758,7 +758,7 @@ fn main() -> Result<()> {
                     let parsed_cmd: Vec<String> = shlex::Shlex::new(rendered_cmd).collect();
 
                     let mut runner_cmd = cmd(&parsed_cmd[0], &parsed_cmd[1..])
-                        .dir(&runner.work_dir)
+                        .dir(config_meta.root_dir.join(runner.work_dir.clone()))
                         .unchecked()
                         .stderr_to_stdout();
 
