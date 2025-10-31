@@ -1,10 +1,8 @@
 use anyhow::{Context, Result};
 
+use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
 use crate::target::Target;
-use crate::{
-    find_suite, find_test, get_group_comment, get_groups, get_suite_chunk, insert_after_keyword,
-    ConfigMeta, Document, Group, Suite, Test,
-};
+use crate::{insert_after_keyword, ConfigMeta, Document, Group, Suite, Test};
 
 pub fn generate_suite(
     config_meta: &ConfigMeta,

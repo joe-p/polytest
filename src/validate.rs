@@ -1,7 +1,8 @@
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 
-use crate::{find_test, get_suite_chunk, target::Target, ConfigMeta, Suite};
+use crate::parsing::{find_test, get_suite_chunk};
+use crate::{target::Target, ConfigMeta, Suite};
 
 pub fn validate_target(
     config_meta: &ConfigMeta,
