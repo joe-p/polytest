@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use color_eyre::eyre::{Context, ContextCompat, Result};
 use serde::Deserialize;
 use std::path::Path;
 use std::path::PathBuf;

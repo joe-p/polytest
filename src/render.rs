@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use color_eyre::eyre::{eyre, Context, ContextCompat, Result};
 use convert_case::{Case, Casing};
 
 use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
@@ -25,7 +25,7 @@ fn case_from_str(s: &str) -> Result<Case> {
         "UpperCamel" => Ok(Case::UpperCamel),
         "UpperFlat" => Ok(Case::UpperFlat),
         "UpperKebab" => Ok(Case::UpperKebab),
-        _ => Err(anyhow!(
+        _ => Err(eyre!(
             "Unsupported case: {}. Supported cases are: Alternating, Camel, Cobol, Flat, Kebab, \
              Lower, Pascal, Snake, ScreamingSnake/UpperSnake, Title, Toggle, Train, Upper, \
              UpperCamel, UpperFlat, UpperKebab",

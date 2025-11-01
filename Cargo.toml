@@ -10,7 +10,7 @@ edition = "2021"
 
 [dependencies]
 # Used to make it easier to bubble up useful errors to the user
-anyhow = "1.0.95"
+color-eyre = "0.6.3"
 
 # Used to easily parse command line arguments
 clap = { version = "4.5.23", features = ["derive"] }

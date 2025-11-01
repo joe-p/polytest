@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use color_eyre::eyre::{ContextCompat, Report, Result};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -180,7 +180,7 @@ impl Runner {
 
                 runners.insert(id.clone(), runner);
 
-                Ok::<(), anyhow::Error>(())
+                Ok::<(), Report>(())
             })?;
 
         Ok(runners)

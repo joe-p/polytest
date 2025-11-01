@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
+use color_eyre::eyre::{eyre, Context, Result};
 use duct::cmd;
 use duct::Handle;
 use indexmap::IndexMap;
@@ -104,6 +104,8 @@ struct ActiveRunner {
 }
 
 fn main() -> Result<()> {
+    color_eyre::install()?;
+
     let parsed = Cli::parse();
 
     let config_path =
@@ -121,7 +123,7 @@ fn main() -> Result<()> {
 
     for target_id in config_meta.config.targets.keys() {
         if config_meta.config.custom_targets.contains_key(target_id) {
-            return Err(anyhow!("{} is defined as both a target and custom_target, please change the name of the custom_target", target_id));
+            return Err(eyre!("{} is defined as both a target and custom_target, please change the name of the custom_target", target_id));
         }
     }
 
