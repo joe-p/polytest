@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{group::Group, Config};
+use crate::{config::Config, group::Group};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct SuiteConfig {

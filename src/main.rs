@@ -3,26 +3,23 @@ use clap::{command, Args, Parser, Subcommand};
 use duct::cmd;
 use duct::Handle;
 use indexmap::IndexMap;
-use json_comments::StripComments;
 use regex::Regex;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::PathBuf;
 use std::process::ExitStatus;
 
-use crate::document::DocumentConfig;
-use crate::group::GroupConfig;
+use crate::config::ConfigMeta;
 use crate::render::Renderer;
 use crate::suite::Suite;
-use crate::suite::SuiteConfig;
 use crate::target::CustomTargetConfig;
 use crate::target::DefaultTarget;
 use crate::target::Target;
 use crate::target::TargetConfig;
 use crate::validate::validate_target;
 
+mod config;
 mod document;
 mod group;
 mod parsing;
@@ -37,57 +34,6 @@ enum TemplateType {
     Suite,
     Group,
     Test,
-}
-
-#[derive(Clone)]
-struct ConfigMeta {
-    root_dir: PathBuf,
-    config: Config,
-}
-
-impl ConfigMeta {
-    fn from_file(path: &str) -> Result<Self> {
-        let contents = std::fs::read_to_string(path).context("failed to read config file")?;
-        let config: Config = if path.ends_with(".json") {
-            let stripped = StripComments::new(contents.as_bytes());
-
-            serde_json::from_reader(stripped).context("failed to parse config file")?
-        } else {
-            toml::from_str(&contents).context("failed to parse config file")?
-        };
-        Ok(Self {
-            root_dir: PathBuf::from(path)
-                .parent()
-                .unwrap_or(PathBuf::from(".").as_path())
-                .to_path_buf(),
-            config,
-        })
-    }
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct Config {
-    name: String,
-
-    package_name: String,
-
-    #[serde(rename = "document")]
-    #[serde(default)]
-    documents: HashMap<String, DocumentConfig>,
-
-    #[serde(rename = "target")]
-    #[serde(default)]
-    targets: HashMap<String, TargetConfig>,
-
-    #[serde(rename = "custom_target")]
-    #[serde(default)]
-    custom_targets: HashMap<String, CustomTargetConfig>,
-
-    #[serde(rename = "suite")]
-    suites: IndexMap<String, SuiteConfig>,
-
-    #[serde(rename = "group")]
-    groups: IndexMap<String, GroupConfig>,
 }
 
 #[derive(Parser)]
