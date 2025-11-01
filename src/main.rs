@@ -5,6 +5,7 @@ use duct::Handle;
 use indexmap::IndexMap;
 use regex::Regex;
 use std::collections::HashMap;
+use std::env;
 use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -40,9 +41,15 @@ enum TemplateType {
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
-    /// Path to the config file (supports .json and .toml)
+    /// Path to the config file (supports .json and .toml). If the --git option is used, this path
+    /// will be relative to the root of the cloned git repo.
     #[arg(short, long, default_value = "polytest.json")]
     config: String,
+
+    /// The git repo to use as the working directory for polytest. If specified, the repo will be
+    /// cloned to a directory in the actual working director
+    #[arg(long)]
+    git: String,
 
     #[command(subcommand)]
     command: Commands,
@@ -107,6 +114,68 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     let parsed = Cli::parse();
+
+    if !parsed.git.is_empty() {
+        let url: String;
+        let git_ref: String;
+
+        if let Some((url_part, ref_part)) = parsed.git.replace("git+", "").split_once("@") {
+            url = url_part.to_string();
+            git_ref = ref_part.to_string();
+        } else {
+            url = parsed.git.replace("git+", "");
+            git_ref = "main".to_string();
+        };
+
+        let repo_str =
+            ".polytest_".to_owned() + &url.split('/').next_back().unwrap().replace(".git", "");
+        let repo_dir = std::path::Path::new(&repo_str);
+
+        if repo_dir.exists() {
+            println!(
+                "Using existing git repo {}. Fetching and checking out {}",
+                repo_dir.display(),
+                git_ref
+            );
+
+            let repo =
+                git2::Repository::open(repo_dir).context("failed to open existing git repo")?;
+
+            // TODO: make sure we are talking to the same remote
+            let mut remote = repo.find_remote("origin")?;
+            remote.fetch(std::slice::from_ref(&git_ref), None, None)?;
+
+            // Get the fetch head reference
+            let fetch_head =
+                repo.find_reference(&format!("refs/remotes/{}/{}", "origin", git_ref))?;
+            let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
+
+            // Create a local branch if it doesn't exist
+            if repo.find_branch(&git_ref, git2::BranchType::Local).is_err() {
+                repo.branch(&git_ref, &repo.find_commit(fetch_commit.id())?, false)?;
+            }
+
+            // Set HEAD to the branch
+            let obj = repo.revparse_single(&format!("refs/heads/{}", git_ref))?;
+            repo.checkout_tree(&obj, None)?;
+            repo.set_head(&format!("refs/heads/{}", git_ref))?;
+        } else {
+            println!(
+                "Cloning {} (ref: {}) into {}",
+                url,
+                git_ref,
+                repo_dir.display()
+            );
+
+            git2::build::RepoBuilder::new()
+                .branch(&git_ref)
+                .clone(&url, std::path::Path::new(repo_dir))
+                .context("failed to clone git repo")?;
+        }
+
+        env::set_current_dir(std::path::Path::new(repo_dir))
+            .context("failed to change working directory to git repo")?;
+    }
 
     let config_path =
         if parsed.config == "polytest.json" && !std::path::Path::new("polytest.json").exists() {
