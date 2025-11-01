@@ -1,8 +1,131 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
+use convert_case::{Case, Casing};
 
 use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
 use crate::target::Target;
-use crate::{insert_after_keyword, ConfigMeta, Document, Group, Suite, Test};
+use crate::{ConfigMeta, Document, Group, Suite, Test};
+
+fn case_from_str(s: &str) -> Result<Case> {
+    match s {
+        "Alternating" => Ok(Case::Alternating),
+        "Camel" => Ok(Case::Camel),
+        "Cobol" => Ok(Case::Cobol),
+        "Flat" => Ok(Case::Flat),
+        "Kebab" => Ok(Case::Kebab),
+        "Lower" => Ok(Case::Lower),
+        "Pascal" => Ok(Case::Pascal),
+        "Snake" => Ok(Case::Snake),
+        "ScreamingSnake" | "UpperSnake" => Ok(Case::UpperSnake),
+        "Title" => Ok(Case::Title),
+        "Toggle" => Ok(Case::Toggle),
+        "Train" => Ok(Case::Train),
+        "Upper" => Ok(Case::Upper),
+        "UpperCamel" => Ok(Case::UpperCamel),
+        "UpperFlat" => Ok(Case::UpperFlat),
+        "UpperKebab" => Ok(Case::UpperKebab),
+        _ => Err(anyhow!(
+            "Unsupported case: {}. Supported cases are: Alternating, Camel, Cobol, Flat, Kebab, \
+             Lower, Pascal, Snake, ScreamingSnake/UpperSnake, Title, Toggle, Train, Upper, \
+             UpperCamel, UpperFlat, UpperKebab",
+            s,
+        )),
+    }
+}
+
+fn convert_case_filter(input: &str, case: &str) -> String {
+    input.to_case(case_from_str(case).unwrap_or_else(|e| {
+        panic!("failed to convert case: {}", e);
+    }))
+}
+
+pub fn make_minijinja_env(targets: &[Target]) -> Result<minijinja::Environment<'static>> {
+    let mut env = minijinja::Environment::new();
+    env.add_filter("convert_case", convert_case_filter);
+    env.set_lstrip_blocks(true);
+
+    env.set_trim_blocks(true);
+
+    for target in targets {
+        for (runner_id, runner) in &target.runners {
+            let target_runner = target.id.clone() + runner_id;
+
+            env.add_template_owned(
+                format!("{}_fail_regex", target_runner),
+                runner.fail_regex_template.clone(),
+            )
+            .context(format!(
+                "failed to add fail_regex template for runner {} of target {}",
+                runner_id, target.id
+            ))?;
+
+            env.add_template_owned(
+                format!("{}_pass_regex", target_runner),
+                runner.pass_regex_template.clone(),
+            )
+            .context(format!(
+                "failed to add pass_regex template for runner {} of target {}",
+                runner_id, target.id
+            ))?;
+        }
+
+        env.add_template_owned(
+            format!("{}_suite_file_name", target.id),
+            target.suite_file_name_template.clone(),
+        )
+        .context(format!(
+            "failed to add suite_file_name template for target {}",
+            target.id
+        ))?;
+
+        env.add_template_owned(
+            format!("{}_test_regex", target.id),
+            target.test_regex_template.clone(),
+        )
+        .context(format!(
+            "failed to add test_regex template for target {}",
+            target.id
+        ))?;
+
+        env.add_template_owned(
+            format!("{}_suite", target.id),
+            target.suite_template.clone(),
+        )
+        .context(format!(
+            "failed to add suite template for target {}",
+            target.id
+        ))?;
+
+        env.add_template_owned(
+            format!("{}_group", target.id),
+            target.group_template.clone(),
+        )
+        .context(format!(
+            "failed to add group template for target {}",
+            target.id
+        ))?;
+
+        env.add_template_owned(format!("{}_test", target.id), target.test_template.clone())
+            .context(format!(
+                "failed to add test template for target {}",
+                target.id
+            ))?;
+    }
+
+    Ok(env)
+}
+
+pub fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
+    match original.find(keyword) {
+        Some(pos) => {
+            let mut result = String::with_capacity(original.len() + to_insert.len());
+            result.push_str(&original[..pos + keyword.len()]);
+            result.push_str(to_insert);
+            result.push_str(&original[pos + keyword.len()..]);
+            result
+        }
+        None => panic!("Keyword not found: {}", keyword),
+    }
+}
 
 pub fn generate_suite(
     config_meta: &ConfigMeta,

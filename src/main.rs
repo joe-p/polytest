@@ -1,9 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
-use convert_case::{Case, Casing};
 use duct::cmd;
 use duct::Handle;
-use glob::glob;
 use indexmap::IndexMap;
 use json_comments::StripComments;
 use regex::Regex;
@@ -16,6 +14,7 @@ use std::process::ExitStatus;
 
 use crate::generate::generate_document;
 use crate::generate::generate_suite;
+use crate::generate::make_minijinja_env;
 use crate::target::CustomTargetConfig;
 use crate::target::DefaultTarget;
 use crate::target::Target;
@@ -32,52 +31,6 @@ enum TemplateType {
     Suite,
     Group,
     Test,
-}
-
-fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
-    match original.find(keyword) {
-        Some(pos) => {
-            let mut result = String::with_capacity(original.len() + to_insert.len());
-            result.push_str(&original[..pos + keyword.len()]);
-            result.push_str(to_insert);
-            result.push_str(&original[pos + keyword.len()..]);
-            result
-        }
-        None => panic!("Keyword not found: {}", keyword),
-    }
-}
-
-fn case_from_str(s: &str) -> Result<Case> {
-    match s {
-        "Alternating" => Ok(Case::Alternating),
-        "Camel" => Ok(Case::Camel),
-        "Cobol" => Ok(Case::Cobol),
-        "Flat" => Ok(Case::Flat),
-        "Kebab" => Ok(Case::Kebab),
-        "Lower" => Ok(Case::Lower),
-        "Pascal" => Ok(Case::Pascal),
-        "Snake" => Ok(Case::Snake),
-        "ScreamingSnake" | "UpperSnake" => Ok(Case::UpperSnake),
-        "Title" => Ok(Case::Title),
-        "Toggle" => Ok(Case::Toggle),
-        "Train" => Ok(Case::Train),
-        "Upper" => Ok(Case::Upper),
-        "UpperCamel" => Ok(Case::UpperCamel),
-        "UpperFlat" => Ok(Case::UpperFlat),
-        "UpperKebab" => Ok(Case::UpperKebab),
-        _ => Err(anyhow!(
-            "Unsupported case: {}. Supported cases are: Alternating, Camel, Cobol, Flat, Kebab, \
-             Lower, Pascal, Snake, ScreamingSnake/UpperSnake, Title, Toggle, Train, Upper, \
-             UpperCamel, UpperFlat, UpperKebab",
-            s,
-        )),
-    }
-}
-
-fn convert_case_filter(input: &str, case: &str) -> String {
-    input.to_case(case_from_str(case).unwrap_or_else(|e| {
-        panic!("failed to convert case: {}", e);
-    }))
 }
 
 struct ConfigMeta {
@@ -143,14 +96,6 @@ impl Document {
             }
         }
     }
-}
-
-fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBuf> {
-    let pattern = template_dir.join(template_name).to_path_buf();
-    glob(pattern.to_str().unwrap())?
-        .next()
-        .ok_or_else(|| anyhow!("No template file found matching: {} ", pattern.display()))
-        .and_then(|path| path.map_err(|e| e.into()))
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -344,12 +289,6 @@ fn main() -> Result<()> {
 
     let config_meta = ConfigMeta::from_file(config_path)?;
 
-    let mut env = minijinja::Environment::new();
-    env.add_filter("convert_case", convert_case_filter);
-    env.set_lstrip_blocks(true);
-
-    env.set_trim_blocks(true);
-
     let mut templates: HashMap<String, String> = HashMap::new();
 
     for (document_id, document_config) in &config_meta.config.documents {
@@ -381,49 +320,8 @@ fn main() -> Result<()> {
         )
         .collect::<Result<Vec<Target>>>()?;
 
-    for target in &all_targets {
-        for (runner_id, runner) in &target.runners {
-            let target_runner = target.id.clone() + runner_id;
-
-            templates.insert(
-                format!("{}_fail_regex", target_runner),
-                runner.fail_regex_template.clone(),
-            );
-            templates.insert(
-                format!("{}_pass_regex", target_runner),
-                runner.pass_regex_template.clone(),
-            );
-        }
-
-        templates.insert(
-            format!("{}_suite_file_name", target.id),
-            target.suite_file_name_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_test_regex", target.id),
-            target.test_regex_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_suite", target.id),
-            target.suite_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_group", target.id),
-            target.group_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_test", target.id),
-            target.test_template.to_string(),
-        );
-    }
-
-    templates.iter().for_each(|(name, template)| {
-        env.add_template(name, template).unwrap();
-    });
+    let targets_clone = all_targets.clone();
+    let env = make_minijinja_env(&targets_clone)?;
 
     match parsed.command {
         Commands::DumpDefaultTargets => {

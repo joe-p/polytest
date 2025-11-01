@@ -1,10 +1,10 @@
 use anyhow::{anyhow, Context, Result};
+use glob::glob;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
-use crate::find_template_file;
 use crate::runner::DefaultRunner;
 use crate::runner::Runner;
 use crate::runner::RunnerConfig;
@@ -15,6 +15,14 @@ pub enum DefaultTarget {
     Bun,
     Vitest,
     Swift,
+}
+
+fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBuf> {
+    let pattern = template_dir.join(template_name).to_path_buf();
+    glob(pattern.to_str().unwrap())?
+        .next()
+        .ok_or_else(|| anyhow!("No template file found matching: {} ", pattern.display()))
+        .and_then(|path| path.map_err(|e| e.into()))
 }
 
 impl TryFrom<&str> for DefaultTarget {
