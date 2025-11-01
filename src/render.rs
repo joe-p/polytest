@@ -4,7 +4,8 @@ use convert_case::{Case, Casing};
 use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
 use crate::runner::Runner;
 use crate::target::Target;
-use crate::{ConfigMeta, Document, Group, Suite, Test};
+use crate::ConfigMeta;
+use crate::{document::Document, group::Group, suite::Suite, test::Test};
 
 fn case_from_str(s: &str) -> Result<Case> {
     match s {

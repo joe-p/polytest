@@ -5,24 +5,32 @@ use duct::Handle;
 use indexmap::IndexMap;
 use json_comments::StripComments;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitStatus;
 
+use crate::document::DocumentConfig;
+use crate::group::GroupConfig;
 use crate::render::Renderer;
+use crate::suite::Suite;
+use crate::suite::SuiteConfig;
 use crate::target::CustomTargetConfig;
 use crate::target::DefaultTarget;
 use crate::target::Target;
 use crate::target::TargetConfig;
 use crate::validate::validate_target;
 
+mod document;
+mod group;
 mod parsing;
 mod render;
 mod runner;
+mod suite;
 mod target;
+mod test;
 mod validate;
 
 enum TemplateType {
@@ -58,46 +66,6 @@ impl ConfigMeta {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-struct DocumentConfig {
-    out_file: PathBuf,
-    template: Option<String>,
-}
-
-struct Document {
-    out_file: PathBuf,
-    template: String,
-}
-
-impl Document {
-    fn from_config(config: &DocumentConfig, id: &str, config_root: &Path) -> Result<Self> {
-        match id {
-            "markdown" => Ok(Self {
-                out_file: config_root.join(&config.out_file),
-                template: config.template.clone().unwrap_or_else(|| {
-                    include_str!("../templates/markdown/plan.md.jinja").to_string()
-                }),
-            }),
-            _ => {
-                let template_path = config_root.join(
-                    config
-                        .template
-                        .clone()
-                        .context(format!("{} is not a default document id and the template field is required for custom documents", id))?,
-                );
-
-                let template = std::fs::read_to_string(template_path)
-                    .context(format!("failed to read template file for {}", id))?;
-
-                Ok(Self {
-                    out_file: config_root.join(&config.out_file),
-                    template,
-                })
-            }
-        }
-    }
-}
-
-#[derive(Deserialize, Debug, Clone)]
 struct Config {
     name: String,
 
@@ -120,89 +88,6 @@ struct Config {
 
     #[serde(rename = "group")]
     groups: IndexMap<String, GroupConfig>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct SuiteConfig {
-    groups: Vec<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct GroupConfig {
-    desc: Option<String>,
-
-    #[serde(rename = "test")]
-    tests: IndexMap<String, TestConfig>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct TestConfig {
-    #[serde(default)]
-    exclude_targets: Vec<String>,
-    desc: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct Suite {
-    name: String,
-    groups: Vec<Group>,
-}
-
-impl Suite {
-    fn from_config(config: &Config, suite_config: &SuiteConfig, suite_id: &str) -> Self {
-        Self {
-            name: suite_id.to_string(),
-            groups: config
-                .groups
-                .iter()
-                .filter_map(|(id, g)| {
-                    if suite_config.groups.contains(id) {
-                        Some(Group::from_config(g, id))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct Group {
-    name: String,
-    tests: Vec<Test>,
-    desc: String,
-}
-
-impl Group {
-    fn from_config(group_config: &GroupConfig, group_id: &str) -> Self {
-        Self {
-            name: group_id.to_string(),
-            tests: group_config
-                .tests
-                .iter()
-                .map(|(id, t)| Test::from_config(t, id))
-                .collect(),
-            desc: group_config.desc.clone().unwrap_or("".to_string()),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct Test {
-    name: String,
-    desc: String,
-    exclude_targets: Vec<String>,
-}
-
-impl Test {
-    fn from_config(test_config: &TestConfig, test_id: &str) -> Self {
-        Self {
-            exclude_targets: test_config.exclude_targets.clone(),
-            name: test_id.to_string(),
-            desc: test_config.desc.clone().unwrap_or("".to_string()),
-        }
-    }
 }
 
 #[derive(Parser)]
