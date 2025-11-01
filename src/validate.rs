@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use color_eyre::eyre::{eyre, Context, Result};
 use regex::Regex;
 
 use crate::parsing::{find_test, get_suite_chunk};
@@ -22,7 +22,7 @@ pub fn validate_target(
 
         let suite_file = target.out_dir.join(&suite_file_name);
         if !suite_file.exists() {
-            return Err(anyhow!(
+            return Err(eyre!(
                 "suite file {} does not exist",
                 std::path::absolute(suite_file)?.display()
             ));
@@ -53,7 +53,7 @@ pub fn validate_target(
                 }
 
                 if !find_test(&contents, target, &test.name, renderer)? {
-                    return Err(anyhow!(
+                    return Err(eyre!(
                         "test \"{}\" does not exist in {}",
                         test.name,
                         suite_file.display()
@@ -75,7 +75,7 @@ pub fn validate_target(
         }
 
         if !remaining_tests.is_empty() {
-            return Err(anyhow!(
+            return Err(eyre!(
                 "found test implementation(s) in \"{}\" suite in {} that were not defined in the test plan\n{}",
                 suite.name,
                 suite_file.display(),

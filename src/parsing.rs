@@ -1,4 +1,4 @@
-use anyhow::Result;
+use color_eyre::eyre::Result;
 use regex::Regex;
 
 use crate::{render::Renderer, target::Target};

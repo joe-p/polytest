@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use color_eyre::eyre::{eyre, Context, Result, Report};
 use glob::glob;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -21,12 +21,12 @@ fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBu
     let pattern = template_dir.join(template_name).to_path_buf();
     glob(pattern.to_str().unwrap())?
         .next()
-        .ok_or_else(|| anyhow!("No template file found matching: {} ", pattern.display()))
+        .ok_or_else(|| eyre!("No template file found matching: {} ", pattern.display()))
         .and_then(|path| path.map_err(|e| e.into()))
 }
 
 impl TryFrom<&str> for DefaultTarget {
-    type Error = anyhow::Error;
+    type Error = Report;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
@@ -34,7 +34,7 @@ impl TryFrom<&str> for DefaultTarget {
             "bun" => Ok(DefaultTarget::Bun),
             "vitest" => Ok(DefaultTarget::Vitest),
             "swift" => Ok(DefaultTarget::Swift),
-            _ => Err(anyhow!("Unsupported default target: {}", value)),
+            _ => Err(eyre!("Unsupported default target: {}", value)),
         }
     }
 }
