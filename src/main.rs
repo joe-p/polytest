@@ -12,17 +12,15 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 
-use crate::generate::generate_document;
-use crate::generate::generate_suite;
-use crate::generate::make_minijinja_env;
+use crate::render::Renderer;
 use crate::target::CustomTargetConfig;
 use crate::target::DefaultTarget;
 use crate::target::Target;
 use crate::target::TargetConfig;
 use crate::validate::validate_target;
 
-mod generate;
 mod parsing;
+mod render;
 mod runner;
 mod target;
 mod validate;
@@ -33,6 +31,7 @@ enum TemplateType {
     Test,
 }
 
+#[derive(Clone)]
 struct ConfigMeta {
     root_dir: PathBuf,
     config: Config,
@@ -289,13 +288,6 @@ fn main() -> Result<()> {
 
     let config_meta = ConfigMeta::from_file(config_path)?;
 
-    let mut templates: HashMap<String, String> = HashMap::new();
-
-    for (document_id, document_config) in &config_meta.config.documents {
-        let document = Document::from_config(document_config, document_id, &config_meta.root_dir)?;
-        templates.insert(format!("{}_document", document_id), document.template);
-    }
-
     for target_id in config_meta.config.targets.keys() {
         if config_meta.config.custom_targets.contains_key(target_id) {
             return Err(anyhow!("{} is defined as both a target and custom_target, please change the name of the custom_target", target_id));
@@ -321,7 +313,7 @@ fn main() -> Result<()> {
         .collect::<Result<Vec<Target>>>()?;
 
     let targets_clone = all_targets.clone();
-    let env = make_minijinja_env(&targets_clone)?;
+    let renderer = Renderer::new(&targets_clone, config_meta.clone())?;
 
     match parsed.command {
         Commands::DumpDefaultTargets => {
@@ -365,11 +357,11 @@ fn main() -> Result<()> {
                 .unwrap_or(config_meta.config.documents.keys().cloned().collect());
 
             for target in targets {
-                generate_suite(&config_meta, &target, &env)?;
+                renderer.generate_suite(&target)?;
             }
 
             for document in documents {
-                generate_document(&config_meta, &document, &env)?;
+                renderer.generate_document(&document)?;
             }
         }
         Commands::Validate(validate) => {
@@ -383,7 +375,7 @@ fn main() -> Result<()> {
             };
 
             for target in targets {
-                validate_target(&config_meta, &target, &env)?;
+                validate_target(&config_meta, &target, &renderer)?;
             }
         }
         Commands::Run(run) => {
@@ -403,16 +395,11 @@ fn main() -> Result<()> {
 
             for target in &targets {
                 for (runner_id, runner) in &target.runners {
-                    let rendered_cmd = &env.render_str(
-                        &runner.command,
-                        minijinja::context! {
-                            package_name => minijinja::Value::from(&config_meta.config.package_name),
-                        },
-                    )?;
+                    let rendered_cmd = renderer.render_cmd(runner)?;
 
                     println!("Running {} > {}: {}", target.id, runner_id, rendered_cmd);
 
-                    let parsed_cmd: Vec<String> = shlex::Shlex::new(rendered_cmd).collect();
+                    let parsed_cmd: Vec<String> = shlex::Shlex::new(&rendered_cmd).collect();
 
                     let mut runner_cmd = cmd(&parsed_cmd[0], &parsed_cmd[1..])
                         .dir(config_meta.root_dir.join(runner.work_dir.clone()))
@@ -477,44 +464,25 @@ fn main() -> Result<()> {
                     .find(|t| t.id == target_id)
                     .expect("the target should exist because the status exists");
 
-                let fail_regex_template = env
-                    .get_template(format!("{}_fail_regex", target_runner).as_str())
-                    .expect("template should exist since it was just added above");
-
-                let pass_regex_template = env
-                    .get_template(format!("{}_pass_regex", target_runner).as_str())
-                    .expect("template should exist since it was just added above");
-
                 let mut fails: Vec<String> = Vec::new();
 
                 if !run.no_parse {
                     for (suite_id, suite_config) in &config_meta.config.suites {
                         let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
-                        let suite_file_name = env
-                            .get_template(format!("{}_suite_file_name", target_id).as_str())
-                            .expect("template should exist since it was just added above")
-                            .render(minijinja::context! {
-                                suite => minijinja::Value::from_serialize(&suite),
-                            })
-                            .context(format!("failed to render file name for {}", target.id))?;
-
+                        let suite_file_name = renderer.render_suite_file_name(target, &suite)?;
                         for group in &suite.groups {
                             for test in &group.tests {
                                 if test.exclude_targets.contains(&target_id) {
                                     continue;
                                 }
 
-                                let fail_regex = fail_regex_template
-                                    .render(minijinja::context! {
-                                        file_name => minijinja::Value::from(&suite_file_name),
-                                        suite_name => minijinja::Value::from(&suite.name),
-                                        group_name => minijinja::Value::from(&group.name),
-                                        test_name => minijinja::Value::from(&test.name),
-                                    })
-                                    .context(format!(
-                                        "failed to render fail regex for {}",
-                                        target_runner
-                                    ))?;
+                                let fail_regex = renderer.render_fail_regex(
+                                    &target_runner,
+                                    &suite_file_name,
+                                    &suite,
+                                    group,
+                                    test,
+                                )?;
 
                                 let fail_regex = Regex::new(&fail_regex).unwrap();
 
@@ -527,17 +495,13 @@ fn main() -> Result<()> {
                                         .to_string(),
                                     );
                                 } else {
-                                    let pass_regex = pass_regex_template
-                                        .render(minijinja::context! {
-                                            file_name => minijinja::Value::from(&suite_file_name),
-                                            suite_name => minijinja::Value::from(&suite.name),
-                                            group_name => minijinja::Value::from(&group.name),
-                                            test_name => minijinja::Value::from(&test.name),
-                                        })
-                                        .context(format!(
-                                            "failed to render pass regex for {}",
-                                            target_runner
-                                        ))?;
+                                    let pass_regex = renderer.render_pass_regex(
+                                        &target_runner,
+                                        &suite_file_name,
+                                        &suite,
+                                        group,
+                                        test,
+                                    )?;
 
                                     let pass_regex = Regex::new(&pass_regex).unwrap();
 

@@ -2,15 +2,14 @@ use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 
 use crate::parsing::{find_test, get_suite_chunk};
+use crate::render::Renderer;
 use crate::{target::Target, ConfigMeta, Suite};
 
 pub fn validate_target(
     config_meta: &ConfigMeta,
     target: &Target,
-    env: &minijinja::Environment,
+    renderer: &Renderer,
 ) -> Result<()> {
-    let file_template_name = format!("{}_suite_file_name", target.id);
-
     let suites: Vec<Suite> = config_meta
         .config
         .suites
@@ -18,22 +17,8 @@ pub fn validate_target(
         .map(|(id, s)| Suite::from_config(&config_meta.config, s, id))
         .collect();
 
-    let test_regex_template_name = format!("{}_test_regex", target.id);
-
-    let test_regex_template = env
-        .get_template(&test_regex_template_name)
-        .expect("template should exist since it was just added above");
-
-    let file_template = env
-        .get_template(file_template_name.as_str())
-        .context(format!("failed to get file template for {}", target.id))?;
-
     for suite in &suites {
-        let suite_file_name = file_template
-            .render(minijinja::context! {
-                suite => minijinja::Value::from_serialize(suite),
-            })
-            .context(format!("failed to render file name for {}", target.id))?;
+        let suite_file_name = renderer.render_suite_file_name(target, suite)?;
 
         let suite_file = target.out_dir.join(&suite_file_name);
         if !suite_file.exists() {
@@ -49,13 +34,8 @@ pub fn validate_target(
         ))?;
 
         let suite_chunk = get_suite_chunk(&contents, &suite.name)?;
-        let all_tests_regex = test_regex_template
-            .render(minijinja::context! {
-                name => minijinja::Value::from(".*"),
-            })
-            .context(format!("failed to render test regex for {}", target.id))?;
 
-        let all_tests_regex = Regex::new(&all_tests_regex).unwrap();
+        let all_tests_regex = Regex::new(&renderer.render_all_tests_regex(target)?).unwrap();
 
         let mut remaining_tests: Vec<String> = all_tests_regex
             .find_iter(&suite_chunk.content)
@@ -72,18 +52,14 @@ pub fn validate_target(
                     continue;
                 }
 
-                if !find_test(&contents, target, &test.name, env)? {
+                if !find_test(&contents, target, &test.name, renderer)? {
                     return Err(anyhow!(
                         "test \"{}\" does not exist in {}",
                         test.name,
                         suite_file.display()
                     ));
                 } else {
-                    let test_regex = test_regex_template
-                        .render(minijinja::context! {
-                            name => minijinja::Value::from(&test.name),
-                        })
-                        .context(format!("failed to render test regex for {}", target.id))?;
+                    let test_regex = renderer.render_test_regex(target, &test.name)?;
 
                     let test_regex = Regex::new(&test_regex).unwrap();
 

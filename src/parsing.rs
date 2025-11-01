@@ -1,7 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use regex::Regex;
 
-use crate::target::Target;
+use crate::{render::Renderer, target::Target};
 
 const GROUP_COMMENT: &str = "Polytest Group:";
 const SUITE_COMMENT: &str = "Polytest Suite:";
@@ -52,19 +52,7 @@ pub fn get_suite_chunk(input: &str, name: &str) -> Result<SuiteChunk> {
     })
 }
 
-pub fn find_test(
-    input: &str,
-    target: &Target,
-    name: &str,
-    env: &minijinja::Environment,
-) -> Result<bool> {
-    let template = env.get_template(format!("{}_test_regex", target.id).as_str())?;
-    let regex = template
-        .render(minijinja::context! {
-            name => minijinja::Value::from(name),
-        })
-        .context(format!("failed to render test regex for {}", target.id))?;
-
-    let re = Regex::new(&regex).unwrap();
+pub fn find_test(input: &str, target: &Target, name: &str, renderer: &Renderer) -> Result<bool> {
+    let re = Regex::new(&renderer.render_test_regex(target, name)?).unwrap();
     Ok(re.is_match(input))
 }
