@@ -1,712 +1,39 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{command, Args, Parser, Subcommand};
-use convert_case::{Case, Casing};
 use duct::cmd;
 use duct::Handle;
-use glob::glob;
 use indexmap::IndexMap;
-use json_comments::StripComments;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitStatus;
 
-const GROUP_COMMENT: &str = "Polytest Group:";
-const SUITE_COMMENT: &str = "Polytest Suite:";
+use crate::config::ConfigMeta;
+use crate::render::Renderer;
+use crate::suite::Suite;
+use crate::target::CustomTargetConfig;
+use crate::target::DefaultTarget;
+use crate::target::Target;
+use crate::target::TargetConfig;
+use crate::validate::validate_target;
 
-enum DefaultTarget {
-    Pytest,
-    Bun,
-    Vitest,
-    Swift,
-}
-
-impl TryFrom<&str> for DefaultTarget {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "pytest" => Ok(DefaultTarget::Pytest),
-            "bun" => Ok(DefaultTarget::Bun),
-            "vitest" => Ok(DefaultTarget::Vitest),
-            "swift" => Ok(DefaultTarget::Swift),
-            _ => Err(anyhow!("Unsupported default target: {}", value)),
-        }
-    }
-}
-
-impl Display for DefaultTarget {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            DefaultTarget::Pytest => "pytest",
-            DefaultTarget::Bun => "bun",
-            DefaultTarget::Vitest => "vitest",
-            DefaultTarget::Swift => "swift",
-        };
-        write!(f, "{}", s)
-    }
-}
+mod config;
+mod document;
+mod group;
+mod parsing;
+mod render;
+mod runner;
+mod suite;
+mod target;
+mod test;
+mod validate;
 
 enum TemplateType {
     Suite,
     Group,
     Test,
-}
-
-impl DefaultTarget {
-    fn default_runners(&self) -> Vec<DefaultRunner> {
-        match self {
-            DefaultTarget::Pytest => vec![DefaultRunner::Pytest],
-            DefaultTarget::Bun => vec![DefaultRunner::BunTest],
-            DefaultTarget::Vitest => vec![DefaultRunner::Vitest],
-            DefaultTarget::Swift => vec![DefaultRunner::XcodebuildMacOS],
-        }
-    }
-
-    fn build_target(&self, id: &str, config: &TargetConfig, config_root: &Path) -> Result<Target> {
-        let runner_overrides = config.runners.clone().unwrap_or_default();
-
-        match self {
-            DefaultTarget::Pytest => {
-                let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
-
-                Ok(Target {
-                    id: id.to_string(),
-                    test_regex_template: r"(?m)def test_{{ name | convert_case('Snake') }}\("
-                        .to_string(),
-                    suite_file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
-                        .to_string(),
-                    out_dir: target_out_dir,
-                    suite_template: self.get_template_content(TemplateType::Suite),
-                    group_template: self.get_template_content(TemplateType::Group),
-                    test_template: self.get_template_content(TemplateType::Test),
-                    runners,
-                })
-            }
-            DefaultTarget::Bun => {
-                let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
-
-                Ok(Target {
-                    id: id.to_string(),
-                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
-                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
-                        .to_string(),
-                    out_dir: target_out_dir,
-                    suite_template: self.get_template_content(TemplateType::Suite),
-                    group_template: self.get_template_content(TemplateType::Group),
-                    test_template: self.get_template_content(TemplateType::Test),
-                    runners,
-                })
-            }
-            DefaultTarget::Vitest => {
-                let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
-
-                Ok(Target {
-                    id: id.to_string(),
-                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
-                    suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
-                        .to_string(),
-                    out_dir: target_out_dir,
-                    suite_template: self.get_template_content(TemplateType::Suite),
-                    group_template: self.get_template_content(TemplateType::Group),
-                    test_template: self.get_template_content(TemplateType::Test),
-                    runners,
-                })
-            }
-            DefaultTarget::Swift => {
-                let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
-
-                Ok(Target {
-                    id: id.to_string(),
-                    test_regex_template: r#"(?m)@Test\(".+: {{ name }}""#.to_string(),
-                    suite_file_name_template:
-                        "{{ suite.name | convert_case('Pascal') }}Tests.swift".to_string(),
-                    out_dir: target_out_dir,
-                    suite_template: self.get_template_content(TemplateType::Suite),
-                    group_template: self.get_template_content(TemplateType::Group),
-                    test_template: self.get_template_content(TemplateType::Test),
-                    runners,
-                })
-            }
-        }
-    }
-
-    fn get_template_content(&self, tmpl_type: TemplateType) -> String {
-        (match self {
-            DefaultTarget::Pytest => match tmpl_type {
-                TemplateType::Suite => include_str!("../templates/pytest/suite.py.jinja"),
-                TemplateType::Group => include_str!("../templates/pytest/group.py.jinja"),
-                TemplateType::Test => include_str!("../templates/pytest/test.py.jinja"),
-            },
-            DefaultTarget::Bun => match tmpl_type {
-                TemplateType::Suite => include_str!("../templates/bun/suite.ts.jinja"),
-                TemplateType::Group => include_str!("../templates/bun/group.ts.jinja"),
-                TemplateType::Test => include_str!("../templates/bun/test.ts.jinja"),
-            },
-            DefaultTarget::Vitest => match tmpl_type {
-                TemplateType::Suite => include_str!("../templates/vitest/suite.ts.jinja"),
-                TemplateType::Group => include_str!("../templates/vitest/group.ts.jinja"),
-                TemplateType::Test => include_str!("../templates/vitest/test.ts.jinja"),
-            },
-            DefaultTarget::Swift => match tmpl_type {
-                TemplateType::Suite => include_str!("../templates/swift/suite.swift.jinja"),
-                TemplateType::Group => include_str!("../templates/swift/group.swift.jinja"),
-                TemplateType::Test => include_str!("../templates/swift/test.swift.jinja"),
-            },
-        })
-        .to_string()
-    }
-}
-
-fn get_group_comment(group: &str) -> String {
-    format!("{} {}", GROUP_COMMENT, group)
-}
-
-fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
-    match original.find(keyword) {
-        Some(pos) => {
-            let mut result = String::with_capacity(original.len() + to_insert.len());
-            result.push_str(&original[..pos + keyword.len()]);
-            result.push_str(to_insert);
-            result.push_str(&original[pos + keyword.len()..]);
-            result
-        }
-        None => panic!("Keyword not found: {}", keyword),
-    }
-}
-
-fn case_from_str(s: &str) -> Result<Case> {
-    match s {
-        "Alternating" => Ok(Case::Alternating),
-        "Camel" => Ok(Case::Camel),
-        "Cobol" => Ok(Case::Cobol),
-        "Flat" => Ok(Case::Flat),
-        "Kebab" => Ok(Case::Kebab),
-        "Lower" => Ok(Case::Lower),
-        "Pascal" => Ok(Case::Pascal),
-        "Snake" => Ok(Case::Snake),
-        "ScreamingSnake" | "UpperSnake" => Ok(Case::UpperSnake),
-        "Title" => Ok(Case::Title),
-        "Toggle" => Ok(Case::Toggle),
-        "Train" => Ok(Case::Train),
-        "Upper" => Ok(Case::Upper),
-        "UpperCamel" => Ok(Case::UpperCamel),
-        "UpperFlat" => Ok(Case::UpperFlat),
-        "UpperKebab" => Ok(Case::UpperKebab),
-        _ => Err(anyhow!(
-            "Unsupported case: {}. Supported cases are: Alternating, Camel, Cobol, Flat, Kebab, \
-             Lower, Pascal, Snake, ScreamingSnake/UpperSnake, Title, Toggle, Train, Upper, \
-             UpperCamel, UpperFlat, UpperKebab",
-            s,
-        )),
-    }
-}
-
-fn convert_case_filter(input: &str, case: &str) -> String {
-    input.to_case(case_from_str(case).unwrap_or_else(|e| {
-        panic!("failed to convert case: {}", e);
-    }))
-}
-
-struct ConfigMeta {
-    root_dir: PathBuf,
-    config: Config,
-}
-
-impl ConfigMeta {
-    fn from_file(path: &str) -> Result<Self> {
-        let contents = std::fs::read_to_string(path).context("failed to read config file")?;
-        let config: Config = if path.ends_with(".json") {
-            let stripped = StripComments::new(contents.as_bytes());
-
-            serde_json::from_reader(stripped).context("failed to parse config file")?
-        } else {
-            toml::from_str(&contents).context("failed to parse config file")?
-        };
-        Ok(Self {
-            root_dir: PathBuf::from(path)
-                .parent()
-                .unwrap_or(PathBuf::from(".").as_path())
-                .to_path_buf(),
-            config,
-        })
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-struct RunnerConfig {
-    command: Option<String>,
-    fail_regex_template: Option<String>,
-    pass_regex_template: Option<String>,
-    env: Option<HashMap<String, String>>,
-    work_dir: Option<PathBuf>,
-}
-
-#[derive(Clone)]
-struct DefaultRunnerConfig {
-    id: String,
-    config: RunnerConfig,
-}
-
-impl DefaultRunnerConfig {
-    fn into_pair(self) -> (String, RunnerConfig) {
-        (self.id, self.config)
-    }
-}
-
-enum DefaultRunner {
-    Pytest,
-    BunTest,
-    Vitest,
-    XcodebuildMacOS,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct Runner {
-    command: String,
-    fail_regex_template: String,
-    pass_regex_template: String,
-    env: Option<HashMap<String, String>>,
-    work_dir: PathBuf,
-}
-
-impl Runner {
-    fn from_configs(
-        default_configs: IndexMap<String, RunnerConfig>,
-        configs: &IndexMap<String, RunnerConfig>,
-        out_dir: &Path,
-    ) -> Result<IndexMap<String, Self>> {
-        let mut current_cfg = RunnerConfig::default();
-
-        let mut runners: IndexMap<String, Self> = IndexMap::new();
-
-        default_configs
-            .iter()
-            .chain(configs.iter())
-            .try_for_each(|(id, cfg)| {
-                current_cfg = RunnerConfig {
-                    command: cfg.command.clone().or_else(|| current_cfg.command.clone()),
-                    env: cfg.env.clone().or_else(|| current_cfg.env.clone()),
-                    work_dir: cfg
-                        .work_dir
-                        .clone()
-                        .or_else(|| current_cfg.work_dir.clone()),
-                    fail_regex_template: cfg
-                        .fail_regex_template
-                        .clone()
-                        .or_else(|| current_cfg.fail_regex_template.clone()),
-                    pass_regex_template: cfg
-                        .pass_regex_template
-                        .clone()
-                        .or_else(|| current_cfg.pass_regex_template.clone()),
-                };
-
-                let runner = Runner {
-                    command: current_cfg
-                        .command
-                        .clone()
-                        .context(format!("command not defined for runner: {}", id))?,
-                    fail_regex_template: "(?m)".to_owned()
-                        + &current_cfg.fail_regex_template.clone().context(format!(
-                            "fail_regex_template not defined for runner: {}",
-                            id
-                        ))?,
-                    pass_regex_template: "(?m)".to_owned()
-                        + &current_cfg.pass_regex_template.clone().context(format!(
-                            "pass_regex_template not defined for runner: {}",
-                            id
-                        ))?,
-                    env: current_cfg.env.clone(),
-                    work_dir: current_cfg
-                        .work_dir
-                        .clone()
-                        .unwrap_or_else(|| out_dir.to_owned()),
-                };
-
-                runners.insert(id.clone(), runner);
-
-                Ok::<(), anyhow::Error>(())
-            })?;
-
-        Ok(runners)
-    }
-}
-#[derive(Deserialize, Debug, Clone)]
-struct Target {
-    id: String,
-    out_dir: PathBuf,
-    test_regex_template: String,
-    suite_file_name_template: String,
-    suite_template: String,
-    group_template: String,
-    test_template: String,
-    runners: IndexMap<String, Runner>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct DocumentConfig {
-    out_file: PathBuf,
-    template: Option<String>,
-}
-
-struct Document {
-    out_file: PathBuf,
-    template: String,
-}
-
-impl Document {
-    fn from_config(config: &DocumentConfig, id: &str, config_root: &Path) -> Result<Self> {
-        match id {
-            "markdown" => Ok(Self {
-                out_file: config_root.join(&config.out_file),
-                template: config.template.clone().unwrap_or_else(|| {
-                    include_str!("../templates/markdown/plan.md.jinja").to_string()
-                }),
-            }),
-            _ => {
-                let template_path = config_root.join(
-                    config
-                        .template
-                        .clone()
-                        .context(format!("{} is not a default document id and the template field is required for custom documents", id))?,
-                );
-
-                let template = std::fs::read_to_string(template_path)
-                    .context(format!("failed to read template file for {}", id))?;
-
-                Ok(Self {
-                    out_file: config_root.join(&config.out_file),
-                    template,
-                })
-            }
-        }
-    }
-}
-
-fn find_template_file(template_dir: &Path, template_name: &str) -> Result<PathBuf> {
-    let pattern = template_dir.join(template_name).to_path_buf();
-    glob(pattern.to_str().unwrap())?
-        .next()
-        .ok_or_else(|| anyhow!("No template file found matching: {} ", pattern.display()))
-        .and_then(|path| path.map_err(|e| e.into()))
-}
-
-impl Target {
-    fn from_config(config: &TargetConfig, id: &str, config_root: &Path) -> Result<Self> {
-        let default_target = DefaultTarget::try_from(id)?;
-        default_target.build_target(id, config, config_root)
-    }
-
-    pub fn from_custom_config(
-        config: &CustomTargetConfig,
-        id: &str,
-        config_root: &Path,
-    ) -> Result<Self> {
-        let template_dir = &config_root.join(&config.template_dir);
-
-        let suite_file = find_template_file(template_dir, "suite*")
-            .context(format!("failed to find suite template for {}", id))?;
-        let suite_template = std::fs::read_to_string(suite_file)
-            .context(format!("failed to read suite template file for {}", id))?;
-
-        let group_file = find_template_file(template_dir, "group*")
-            .context(format!("failed to find group template for {}", id))?;
-        let group_template = std::fs::read_to_string(group_file)
-            .context(format!("failed to read group template file for {}", id))?;
-
-        let test_file = find_template_file(template_dir, "test*")
-            .context(format!("failed to find test template for {}", id))?;
-        let test_template = std::fs::read_to_string(test_file)
-            .context(format!("failed to read test template file for {}", id))?;
-
-        Ok(Self {
-            id: id.to_string(),
-            test_regex_template: "(?m)".to_owned() + config.test_regex_template.as_str(),
-            out_dir: config_root.join(&config.out_dir),
-            suite_file_name_template: config.suite_file_name_template.clone(),
-            suite_template,
-            group_template,
-            test_template,
-            runners: Runner::from_configs(
-                IndexMap::<String, RunnerConfig>::default(),
-                &config.runners,
-                &config_root.join(&config.out_dir),
-            )?,
-        })
-    }
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct Config {
-    name: String,
-
-    package_name: String,
-
-    #[serde(rename = "document")]
-    #[serde(default)]
-    documents: HashMap<String, DocumentConfig>,
-
-    #[serde(rename = "target")]
-    #[serde(default)]
-    targets: HashMap<String, TargetConfig>,
-
-    #[serde(rename = "custom_target")]
-    #[serde(default)]
-    custom_targets: HashMap<String, CustomTargetConfig>,
-
-    #[serde(rename = "suite")]
-    suites: IndexMap<String, SuiteConfig>,
-
-    #[serde(rename = "group")]
-    groups: IndexMap<String, GroupConfig>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct TargetConfig {
-    out_dir: PathBuf,
-
-    #[serde(rename = "runner")]
-    runners: Option<IndexMap<String, RunnerConfig>>,
-}
-
-impl DefaultRunner {
-    fn get_default_config(&self, target_config: &TargetConfig) -> DefaultRunnerConfig {
-        match self {
-            DefaultRunner::Pytest => DefaultRunnerConfig {
-                id: "pytest -v".to_string(),
-                config: RunnerConfig {
-                    env: None,
-                    command: Some("pytest -v".to_string()),
-                    fail_regex_template: Some(
-                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} FAILED"
-                            .to_string(),
-                    ),
-                    pass_regex_template: Some(
-                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} PASSED"
-                            .to_string(),
-                    ),
-                    work_dir: Some(target_config.out_dir.clone()),
-                },
-            },
-            DefaultRunner::BunTest => DefaultRunnerConfig {
-                id: "bun test".to_string(),
-                config: RunnerConfig {
-                    env: None,
-                    command: Some("bun test".to_string()),
-                    fail_regex_template: Some(
-                        r"\(fail\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$"
-                            .to_string(),
-                    ),
-                    pass_regex_template: Some(
-                        r"\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$"
-                            .to_string(),
-                    ),
-                    work_dir: Some(target_config.out_dir.clone()),
-                },
-            },
-            DefaultRunner::Vitest => DefaultRunnerConfig {
-                id: "vitest".to_string(),
-                config: RunnerConfig {
-                    env: None,
-                    command: Some("npx vitest run --no-color --reporter verbose".to_string()),
-                    fail_regex_template: Some(
-                        "FAIL  {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}"
-                            .to_string(),
-                    ),
-                    pass_regex_template: Some(
-                        "✓ {{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}"
-                            .to_string(),
-                    ),
-                    work_dir: Some(target_config.out_dir.clone()),
-                },
-            },
-            DefaultRunner::XcodebuildMacOS => {
-                let work_dir = target_config
-                    .out_dir
-                    .parent()
-                    .and_then(|p| p.parent())
-                    .expect("parent should always exist")
-                    .to_path_buf();
-
-                DefaultRunnerConfig {
-                    id: "macOS".to_string(),
-                    config: RunnerConfig {
-                        env: None,
-                        command: Some(
-                            r#"xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination "platform=macOS""#
-                                .to_string(),
-                        ),
-                        pass_regex_template: Some(
-                            r#""{{ suite_name }}: {{ test_name }}" passed"#.to_string(),
-                        ),
-                        fail_regex_template: Some(
-                            r#"Failing tests:(.|\W)*{{ (suite_name + " " + test_name) | convert_case('Camel') }}\(\)(.|\W)*** TEST FAILED **"#
-                                .to_string(),
-                        ),
-                        work_dir: Some(work_dir),
-                    },
-                }
-            }
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct CustomTargetConfig {
-    out_dir: PathBuf,
-
-    test_regex_template: String,
-    suite_file_name_template: String,
-    template_dir: PathBuf,
-
-    #[serde(rename = "runner")]
-    runners: IndexMap<String, RunnerConfig>,
-}
-
-impl From<Target> for CustomTargetConfig {
-    fn from(target: Target) -> Self {
-        Self {
-            out_dir: target.out_dir,
-            test_regex_template: target.test_regex_template,
-            suite_file_name_template: target.suite_file_name_template,
-            template_dir: PathBuf::from(""),
-            runners: target
-                .runners
-                .into_iter()
-                .map(|(id, runner)| {
-                    (
-                        id,
-                        RunnerConfig {
-                            command: Some(runner.command),
-                            fail_regex_template: Some(runner.fail_regex_template),
-                            pass_regex_template: Some(runner.pass_regex_template),
-                            env: runner.env,
-                            work_dir: Some(runner.work_dir),
-                        },
-                    )
-                })
-                .collect(),
-        }
-    }
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct SuiteConfig {
-    groups: Vec<String>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct GroupConfig {
-    desc: Option<String>,
-
-    #[serde(rename = "test")]
-    tests: IndexMap<String, TestConfig>,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-struct TestConfig {
-    #[serde(default)]
-    exclude_targets: Vec<String>,
-    desc: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-struct Suite {
-    name: String,
-    groups: Vec<Group>,
-}
-
-impl Suite {
-    fn from_config(config: &Config, suite_config: &SuiteConfig, suite_id: &str) -> Self {
-        Self {
-            name: suite_id.to_string(),
-            groups: config
-                .groups
-                .iter()
-                .filter_map(|(id, g)| {
-                    if suite_config.groups.contains(id) {
-                        Some(Group::from_config(g, id))
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct Group {
-    name: String,
-    tests: Vec<Test>,
-    desc: String,
-}
-
-impl Group {
-    fn from_config(group_config: &GroupConfig, group_id: &str) -> Self {
-        Self {
-            name: group_id.to_string(),
-            tests: group_config
-                .tests
-                .iter()
-                .map(|(id, t)| Test::from_config(t, id))
-                .collect(),
-            desc: group_config.desc.clone().unwrap_or("".to_string()),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct Test {
-    name: String,
-    desc: String,
-    exclude_targets: Vec<String>,
-}
-
-impl Test {
-    fn from_config(test_config: &TestConfig, test_id: &str) -> Self {
-        Self {
-            exclude_targets: test_config.exclude_targets.clone(),
-            name: test_id.to_string(),
-            desc: test_config.desc.clone().unwrap_or("".to_string()),
-        }
-    }
 }
 
 #[derive(Parser)]
@@ -792,19 +119,6 @@ fn main() -> Result<()> {
 
     let config_meta = ConfigMeta::from_file(config_path)?;
 
-    let mut env = minijinja::Environment::new();
-    env.add_filter("convert_case", convert_case_filter);
-    env.set_lstrip_blocks(true);
-
-    env.set_trim_blocks(true);
-
-    let mut templates: HashMap<String, String> = HashMap::new();
-
-    for (document_id, document_config) in &config_meta.config.documents {
-        let document = Document::from_config(document_config, document_id, &config_meta.root_dir)?;
-        templates.insert(format!("{}_document", document_id), document.template);
-    }
-
     for target_id in config_meta.config.targets.keys() {
         if config_meta.config.custom_targets.contains_key(target_id) {
             return Err(anyhow!("{} is defined as both a target and custom_target, please change the name of the custom_target", target_id));
@@ -829,49 +143,8 @@ fn main() -> Result<()> {
         )
         .collect::<Result<Vec<Target>>>()?;
 
-    for target in &all_targets {
-        for (runner_id, runner) in &target.runners {
-            let target_runner = target.id.clone() + runner_id;
-
-            templates.insert(
-                format!("{}_fail_regex", target_runner),
-                runner.fail_regex_template.clone(),
-            );
-            templates.insert(
-                format!("{}_pass_regex", target_runner),
-                runner.pass_regex_template.clone(),
-            );
-        }
-
-        templates.insert(
-            format!("{}_suite_file_name", target.id),
-            target.suite_file_name_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_test_regex", target.id),
-            target.test_regex_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_suite", target.id),
-            target.suite_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_group", target.id),
-            target.group_template.to_string(),
-        );
-
-        templates.insert(
-            format!("{}_test", target.id),
-            target.test_template.to_string(),
-        );
-    }
-
-    templates.iter().for_each(|(name, template)| {
-        env.add_template(name, template).unwrap();
-    });
+    let targets_clone = all_targets.clone();
+    let renderer = Renderer::new(&targets_clone, config_meta.clone())?;
 
     match parsed.command {
         Commands::DumpDefaultTargets => {
@@ -915,11 +188,11 @@ fn main() -> Result<()> {
                 .unwrap_or(config_meta.config.documents.keys().cloned().collect());
 
             for target in targets {
-                generate_target(&config_meta, &target, &env)?;
+                renderer.generate_suite(&target)?;
             }
 
             for document in documents {
-                generate_document(&config_meta, &document, &env)?;
+                renderer.generate_document(&document)?;
             }
         }
         Commands::Validate(validate) => {
@@ -933,7 +206,7 @@ fn main() -> Result<()> {
             };
 
             for target in targets {
-                validate_target(&config_meta, &target, &env)?;
+                validate_target(&config_meta, &target, &renderer)?;
             }
         }
         Commands::Run(run) => {
@@ -953,16 +226,11 @@ fn main() -> Result<()> {
 
             for target in &targets {
                 for (runner_id, runner) in &target.runners {
-                    let rendered_cmd = &env.render_str(
-                        &runner.command,
-                        minijinja::context! {
-                            package_name => minijinja::Value::from(&config_meta.config.package_name),
-                        },
-                    )?;
+                    let rendered_cmd = renderer.render_cmd(runner)?;
 
                     println!("Running {} > {}: {}", target.id, runner_id, rendered_cmd);
 
-                    let parsed_cmd: Vec<String> = shlex::Shlex::new(rendered_cmd).collect();
+                    let parsed_cmd: Vec<String> = shlex::Shlex::new(&rendered_cmd).collect();
 
                     let mut runner_cmd = cmd(&parsed_cmd[0], &parsed_cmd[1..])
                         .dir(config_meta.root_dir.join(runner.work_dir.clone()))
@@ -1027,44 +295,25 @@ fn main() -> Result<()> {
                     .find(|t| t.id == target_id)
                     .expect("the target should exist because the status exists");
 
-                let fail_regex_template = env
-                    .get_template(format!("{}_fail_regex", target_runner).as_str())
-                    .expect("template should exist since it was just added above");
-
-                let pass_regex_template = env
-                    .get_template(format!("{}_pass_regex", target_runner).as_str())
-                    .expect("template should exist since it was just added above");
-
                 let mut fails: Vec<String> = Vec::new();
 
                 if !run.no_parse {
                     for (suite_id, suite_config) in &config_meta.config.suites {
                         let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
-                        let suite_file_name = env
-                            .get_template(format!("{}_suite_file_name", target_id).as_str())
-                            .expect("template should exist since it was just added above")
-                            .render(minijinja::context! {
-                                suite => minijinja::Value::from_serialize(&suite),
-                            })
-                            .context(format!("failed to render file name for {}", target.id))?;
-
+                        let suite_file_name = renderer.render_suite_file_name(target, &suite)?;
                         for group in &suite.groups {
                             for test in &group.tests {
                                 if test.exclude_targets.contains(&target_id) {
                                     continue;
                                 }
 
-                                let fail_regex = fail_regex_template
-                                    .render(minijinja::context! {
-                                        file_name => minijinja::Value::from(&suite_file_name),
-                                        suite_name => minijinja::Value::from(&suite.name),
-                                        group_name => minijinja::Value::from(&group.name),
-                                        test_name => minijinja::Value::from(&test.name),
-                                    })
-                                    .context(format!(
-                                        "failed to render fail regex for {}",
-                                        target_runner
-                                    ))?;
+                                let fail_regex = renderer.render_fail_regex(
+                                    &target_runner,
+                                    &suite_file_name,
+                                    &suite,
+                                    group,
+                                    test,
+                                )?;
 
                                 let fail_regex = Regex::new(&fail_regex).unwrap();
 
@@ -1077,17 +326,13 @@ fn main() -> Result<()> {
                                         .to_string(),
                                     );
                                 } else {
-                                    let pass_regex = pass_regex_template
-                                        .render(minijinja::context! {
-                                            file_name => minijinja::Value::from(&suite_file_name),
-                                            suite_name => minijinja::Value::from(&suite.name),
-                                            group_name => minijinja::Value::from(&group.name),
-                                            test_name => minijinja::Value::from(&test.name),
-                                        })
-                                        .context(format!(
-                                            "failed to render pass regex for {}",
-                                            target_runner
-                                        ))?;
+                                    let pass_regex = renderer.render_pass_regex(
+                                        &target_runner,
+                                        &suite_file_name,
+                                        &suite,
+                                        group,
+                                        test,
+                                    )?;
 
                                     let pass_regex = Regex::new(&pass_regex).unwrap();
 
@@ -1126,389 +371,6 @@ fn main() -> Result<()> {
             }
         }
     }
-
-    Ok(())
-}
-
-fn validate_target(
-    config_meta: &ConfigMeta,
-    target: &Target,
-    env: &minijinja::Environment,
-) -> Result<()> {
-    let file_template_name = format!("{}_suite_file_name", target.id);
-
-    let suites: Vec<Suite> = config_meta
-        .config
-        .suites
-        .iter()
-        .map(|(id, s)| Suite::from_config(&config_meta.config, s, id))
-        .collect();
-
-    let test_regex_template_name = format!("{}_test_regex", target.id);
-
-    let test_regex_template = env
-        .get_template(&test_regex_template_name)
-        .expect("template should exist since it was just added above");
-
-    let file_template = env
-        .get_template(file_template_name.as_str())
-        .context(format!("failed to get file template for {}", target.id))?;
-
-    for suite in &suites {
-        let suite_file_name = file_template
-            .render(minijinja::context! {
-                suite => minijinja::Value::from_serialize(suite),
-            })
-            .context(format!("failed to render file name for {}", target.id))?;
-
-        let suite_file = target.out_dir.join(&suite_file_name);
-        if !suite_file.exists() {
-            return Err(anyhow!(
-                "suite file {} does not exist",
-                std::path::absolute(suite_file)?.display()
-            ));
-        }
-
-        let contents = std::fs::read_to_string(&suite_file).context(format!(
-            "failed to read existing suite file for {}",
-            target.id
-        ))?;
-
-        let suite_chunk = get_suite_chunk(&contents, &suite.name)?;
-        let all_tests_regex = test_regex_template
-            .render(minijinja::context! {
-                name => minijinja::Value::from(".*"),
-            })
-            .context(format!("failed to render test regex for {}", target.id))?;
-
-        let all_tests_regex = Regex::new(&all_tests_regex).unwrap();
-
-        let mut remaining_tests: Vec<String> = all_tests_regex
-            .find_iter(&suite_chunk.content)
-            .map(|m| m.as_str().to_string())
-            .collect();
-
-        for group in &suite.groups {
-            for test in &group.tests {
-                if test.exclude_targets.contains(&target.id) {
-                    println!(
-                        "test \"{}\" excluded from {} for {}",
-                        test.name, suite.name, target.id
-                    );
-                    continue;
-                }
-
-                if !find_test(&contents, target, &test.name, env)? {
-                    return Err(anyhow!(
-                        "test \"{}\" does not exist in {}",
-                        test.name,
-                        suite_file.display()
-                    ));
-                } else {
-                    let test_regex = test_regex_template
-                        .render(minijinja::context! {
-                            name => minijinja::Value::from(&test.name),
-                        })
-                        .context(format!("failed to render test regex for {}", target.id))?;
-
-                    let test_regex = Regex::new(&test_regex).unwrap();
-
-                    remaining_tests = remaining_tests
-                        .iter()
-                        .filter(|t| !test_regex.is_match(t))
-                        .cloned()
-                        .collect();
-
-                    println!("test \"{}\" exists in {}", test.name, suite_file.display());
-                }
-            }
-        }
-
-        if !remaining_tests.is_empty() {
-            return Err(anyhow!(
-                "found test implementation(s) in \"{}\" suite in {} that were not defined in the test plan\n{}",
-                suite.name,
-                suite_file.display(),
-                remaining_tests.join("\n")
-            ));
-        }
-    }
-
-    Ok(())
-}
-
-fn get_groups(input: &str) -> Vec<String> {
-    let re = Regex::new(format!(r"{} (.*)", GROUP_COMMENT).as_str()).unwrap();
-    let mut groups = Vec::new();
-    for cap in re.captures_iter(input) {
-        groups.push(cap[1].to_string().trim().to_string());
-    }
-    groups
-}
-
-fn find_suite(input: &str, name: &str) -> Result<bool> {
-    let re = Regex::new(format!(r"{} {}", SUITE_COMMENT, name).as_str()).unwrap();
-    Ok(re.is_match(input))
-}
-
-struct SuiteChunk {
-    content: String,
-    start: usize,
-    end: usize,
-}
-
-/// Gets the chunk of the input that starts with the suite comment and ends with
-/// the next suite comment (or the end of the file)
-fn get_suite_chunk(input: &str, name: &str) -> Result<SuiteChunk> {
-    let start_re = Regex::new(format!(r"{} {}", SUITE_COMMENT, name).as_str()).unwrap();
-    let start = start_re.find(input).unwrap().end();
-
-    let end_chunk = input[start..].to_string();
-
-    let end_re = Regex::new(SUITE_COMMENT).unwrap();
-    let end = start
-        + end_re
-            .find(&end_chunk)
-            .map(|m| m.start())
-            .unwrap_or(end_chunk.len());
-
-    Ok(SuiteChunk {
-        content: input[start..end].to_string(),
-        start,
-        end,
-    })
-}
-
-fn find_test(
-    input: &str,
-    target: &Target,
-    name: &str,
-    env: &minijinja::Environment,
-) -> Result<bool> {
-    let template = env.get_template(format!("{}_test_regex", target.id).as_str())?;
-    let regex = template
-        .render(minijinja::context! {
-            name => minijinja::Value::from(name),
-        })
-        .context(format!("failed to render test regex for {}", target.id))?;
-
-    let re = Regex::new(&regex).unwrap();
-    Ok(re.is_match(input))
-}
-
-fn generate_target(
-    config_meta: &ConfigMeta,
-    target: &Target,
-    env: &minijinja::Environment,
-) -> Result<()> {
-    generate_suite(config_meta, target, env)?;
-
-    Ok(())
-}
-
-fn generate_suite(
-    config_meta: &ConfigMeta,
-    target: &Target,
-    env: &minijinja::Environment,
-) -> Result<()> {
-    let config = &config_meta.config;
-
-    let suite_values: Vec<Suite> = config
-        .suites
-        .iter()
-        .map(|(id, s)| Suite::from_config(config, s, id))
-        .collect();
-
-    let suite_template_name = format!("{}_suite", target.id);
-    let suite_template = env
-        .get_template(suite_template_name.as_str())
-        .expect("suite template should have been adedd by generate_target");
-
-    let group_template_name = format!("{}_group", target.id);
-    let group_template = env
-        .get_template(group_template_name.as_str())
-        .expect("group template should have been adedd by generate_target");
-
-    let test_template_name = format!("{}_test", target.id);
-    let test_template = env
-        .get_template(test_template_name.as_str())
-        .expect("test template should have been adedd by generate_target");
-
-    let file_template_name = format!("{}_suite_file_name", target.id);
-    let file_template = env
-        .get_template(file_template_name.as_str())
-        .expect("file template should have been adedd by generate_target");
-
-    for suite in &suite_values {
-        let suite_file_name = file_template
-            .render(minijinja::context! {
-                suite => minijinja::Value::from_serialize(suite),
-            })
-            .context(format!("failed to render file name for {}", target.id))?;
-
-        let suite_file = target.out_dir.join(&suite_file_name);
-
-        let mut contents: String = String::new();
-
-        if suite_file.exists() {
-            println!("{} exists, reading content...", suite_file.display());
-            contents = std::fs::read_to_string(&suite_file).context(format!(
-                "failed to read existing suite file for {}",
-                target.id
-            ))?;
-        }
-
-        if !find_suite(&contents, &suite.name)? {
-            contents.insert_str(
-                contents.len(),
-                &suite_template
-                    .render(minijinja::context! {
-                        package_name => minijinja::Value::from(&config.package_name),
-                        suite => minijinja::Value::from_serialize(suite),
-                    })
-                    .context(format!("failed to render suite for {}", target.id))?,
-            );
-        }
-
-        let mut suite_chunk = get_suite_chunk(&contents, &suite.name)?;
-
-        let existing_groups = get_groups(&suite_chunk.content);
-
-        let missing_groups: Vec<&Group> = suite
-            .groups
-            .iter()
-            .filter(|g| !existing_groups.contains(&g.name))
-            .collect();
-
-        for group in &missing_groups {
-            let rendered_group = group_template
-                .render(minijinja::context! {
-                    group => minijinja::Value::from_serialize(group),
-                })
-                .context(format!(
-                    "failed to render group {} for {}",
-                    group.name, target.id
-                ))?;
-
-            suite_chunk.content.insert_str(0, &rendered_group);
-        }
-
-        for group in &suite.groups {
-            for test in &group.tests {
-                if test.exclude_targets.contains(&target.id) {
-                    println!(
-                        "test \"{}\" excluded from {} for {}",
-                        test.name, suite.name, target.id
-                    );
-                    continue;
-                }
-
-                // We don't need to get a group-specific chunk because two groups can't have the same test
-                if find_test(&suite_chunk.content, target, &test.name, env)? {
-                    println!(
-                        "test \"{}\" already exists in {}. Skipping...",
-                        test.name,
-                        suite_file.display()
-                    );
-                    continue;
-                }
-
-                let rendered_test = test_template
-                    .render(minijinja::context! {
-                        test => minijinja::Value::from_serialize(test),
-                        group_name => minijinja::Value::from(&group.name),
-                        suite_name => minijinja::Value::from(&suite.name),
-                    })
-                    .context(format!(
-                        "failed to render test {} for group {}",
-                        test.name, group.name
-                    ))?;
-
-                let group_comment = get_group_comment(&group.name);
-
-                suite_chunk.content =
-                    insert_after_keyword(&suite_chunk.content, &rendered_test, &group_comment);
-            }
-        }
-
-        contents.replace_range(suite_chunk.start..suite_chunk.end, &suite_chunk.content);
-
-        if let Some(parent) = suite_file.parent() {
-            std::fs::create_dir_all(parent).context(format!(
-                "failed to create directory for {}",
-                parent.display()
-            ))?;
-        }
-
-        std::fs::write(&suite_file, contents).context(format!(
-            "failed to write suite file {} for {}",
-            &suite_file.display(),
-            target.id
-        ))?;
-    }
-
-    Ok(())
-}
-
-fn generate_document(
-    config_meta: &ConfigMeta,
-    doc_id: &str,
-    env: &minijinja::Environment,
-) -> Result<()> {
-    let document_config = config_meta
-        .config
-        .documents
-        .get(doc_id)
-        .context(format!("document {} does not exist", doc_id))?;
-
-    let document = Document::from_config(document_config, doc_id, &config_meta.root_dir)?;
-
-    let config = &config_meta.config;
-    let suite_values: Vec<Suite> = config
-        .suites
-        .iter()
-        .map(|(id, s)| Suite::from_config(config, s, id))
-        .collect();
-
-    let group_values: Vec<Group> = config
-        .groups
-        .iter()
-        .map(|(id, g)| Group::from_config(g, id))
-        .collect();
-
-    let test_values: Vec<Test> = config
-        .groups
-        .iter()
-        .flat_map(|(_, g_cfg)| {
-            g_cfg
-                .tests
-                .iter()
-                .map(|(t_id, t_cfg)| Test::from_config(t_cfg, t_id))
-        })
-        .collect();
-
-    let template = env
-        .template_from_str(&document.template)
-        .context(format!("failed to load template for {}", doc_id))?;
-
-    let content = template
-        .render(minijinja::context! {
-            name => minijinja::Value::from(&config.name),
-            suites => minijinja::Value::from_serialize(&suite_values),
-            groups => minijinja::Value::from_serialize(&group_values),
-            tests => minijinja::Value::from_serialize(&test_values)
-        })
-        .context(format!("failed to render document for {}", doc_id))?;
-
-    if let Some(parent) = document.out_file.parent() {
-        std::fs::create_dir_all(parent).context(format!(
-            "failed to create directory for {}",
-            parent.display()
-        ))?;
-    }
-
-    std::fs::write(document.out_file, content)
-        .context(format!("failed to write document for {}", doc_id))?;
 
     Ok(())
 }
