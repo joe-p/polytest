@@ -51,7 +51,7 @@ struct Cli {
     /// The git repo to use as the working directory for polytest. If specified, the repo will be
     /// cloned to a directory in the actual working director
     #[arg(long)]
-    git: String,
+    git: Option<String>,
 
     #[command(subcommand)]
     command: Commands,
@@ -195,8 +195,8 @@ fn main() -> Result<()> {
 
     let parsed = Cli::parse();
 
-    if !parsed.git.is_empty() {
-        let remote_ref = GitRemoteRef::from_url(&parsed.git)
+    if let Some(parsed_git) = &parsed.git {
+        let remote_ref = GitRemoteRef::from_url(parsed_git)
             .context("failed to parse git remote and ref from url")?;
         let git_ref = remote_ref.git_ref.clone();
 
