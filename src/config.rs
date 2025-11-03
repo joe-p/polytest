@@ -19,7 +19,14 @@ pub struct ConfigMeta {
 
 impl ConfigMeta {
     pub fn from_file(path: &str) -> Result<Self> {
-        let contents = std::fs::read_to_string(path).context("failed to read config file")?;
+        let full_path = std::fs::canonicalize(path)
+            .with_context(|| format!("failed to canonicalize path: {}", path))?;
+
+        let contents = std::fs::read_to_string(path).context(format!(
+            "failed to read config file: {}",
+            full_path.display()
+        ))?;
+
         let config: Config = if path.ends_with(".json") {
             let stripped = StripComments::new(contents.as_bytes());
 
