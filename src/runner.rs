@@ -43,11 +43,11 @@ impl DefaultRunner {
                     env: None,
                     command: Some("pytest -v".to_string()),
                     fail_regex_template: Some(
-                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} FAILED"
+                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }}(\\[.*\\])?\\s+FAILED"
                             .to_string(),
                     ),
                     pass_regex_template: Some(
-                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }} PASSED"
+                        "{{ file_name }}::test_{{ test_name | convert_case('Snake') }}(\\[.*\\])?\\s+PASSED"
                             .to_string(),
                     ),
                     work_dir: Some(target_config.out_dir.clone()),
