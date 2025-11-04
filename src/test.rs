@@ -7,7 +7,7 @@ pub struct TestConfig {
     desc: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Test {
     pub name: String,
     pub desc: String,

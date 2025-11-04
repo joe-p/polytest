@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::test::{Test, TestConfig};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Group {
     pub name: String,
     pub tests: Vec<Test>,
