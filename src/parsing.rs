@@ -20,7 +20,7 @@ pub fn get_groups(input: &str) -> Vec<String> {
 }
 
 pub fn find_suite(input: &str, name: &str) -> Result<bool> {
-    let re = Regex::new(format!(r"{} {}", SUITE_COMMENT, name).as_str()).unwrap();
+    let re = Regex::new(format!(r"{} {}", SUITE_COMMENT, regex::escape(name)).as_str()).unwrap();
     Ok(re.is_match(input))
 }
 
@@ -33,7 +33,8 @@ pub struct SuiteChunk {
 /// Gets the chunk of the input that starts with the suite comment and ends with
 /// the next suite comment (or the end of the file)
 pub fn get_suite_chunk(input: &str, name: &str) -> Result<SuiteChunk> {
-    let start_re = Regex::new(format!(r"{} {}", SUITE_COMMENT, name).as_str()).unwrap();
+    let start_re =
+        Regex::new(format!(r"{} {}", SUITE_COMMENT, regex::escape(name)).as_str()).unwrap();
     let start = start_re.find(input).unwrap().end();
 
     let end_chunk = input[start..].to_string();
