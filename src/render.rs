@@ -172,18 +172,8 @@ impl Renderer {
             .get_template(test_template_name.as_str())
             .expect("test template should have been adedd by generate_target");
 
-        let file_template_name = format!("{}_suite_file_name", target.id);
-        let file_template = self
-            .env
-            .get_template(file_template_name.as_str())
-            .expect("file template should have been adedd by generate_target");
-
         for suite in &suite_values {
-            let suite_file_name = file_template
-                .render(minijinja::context! {
-                    suite => minijinja::Value::from_serialize(suite),
-                })
-                .context(format!("failed to render file name for {}", target.id))?;
+            let suite_file_name = self.render_suite_file_name(target, suite)?;
 
             let suite_file = target.out_dir.join(&suite_file_name);
 
@@ -379,9 +369,14 @@ impl Renderer {
             .get_template(&file_template_name)
             .context(format!("failed to get file template for {}", target.id))?;
 
+        let modified_suite = Suite {
+            name: suite.name.replace(std::path::MAIN_SEPARATOR_STR, "_"),
+            groups: suite.groups.clone(),
+        };
+
         let rendered = file_template
             .render(minijinja::context! {
-                suite => minijinja::Value::from_serialize(suite),
+                suite => minijinja::Value::from_serialize(modified_suite),
             })
             .context(format!("failed to render file name for {}", target.id))?;
 
