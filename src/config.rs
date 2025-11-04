@@ -27,7 +27,7 @@ impl ConfigMeta {
             full_path.display()
         ))?;
 
-        let config: Config = if path.ends_with(".json") {
+        let config: Config = if path.ends_with(".json") || path.ends_with(".jsonc") {
             let stripped = StripComments::new(contents.as_bytes());
 
             serde_json::from_reader(stripped).context("failed to parse config file")?
