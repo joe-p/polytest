@@ -51,8 +51,8 @@ For more information on behavior see <https://docs.rs/convert_case/0.7.1/convert
 
 ##### Example
 
-```toml
-suite_file_name_template = "test_{{ suite.name | convert_case('Snake') }}.rb"
+```json
+"suite_file_name_template": "test_{{ suite.name | convert_case('Snake') }}.rb"
 ```
 
 ## Test, Group, and Suite Structs

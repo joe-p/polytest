@@ -43,7 +43,7 @@ enum TemplateType {
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 struct Cli {
-    /// Path to the config file (supports .json and .toml). If the --git option is used, this path
+    /// Path to the config file (supports .json and .jsonc). If the --git option is used, this path
     /// will be relative to the root of the cloned git repo.
     #[arg(short, long, default_value = "polytest.json")]
     config: String,
@@ -254,18 +254,7 @@ fn main() -> Result<()> {
             .context("failed to change working directory to git repo")?;
     }
 
-    let config_path =
-        if parsed.config == "polytest.json" && !std::path::Path::new("polytest.json").exists() {
-            if std::path::Path::new("polytest.toml").exists() {
-                "polytest.toml"
-            } else {
-                &parsed.config
-            }
-        } else {
-            &parsed.config
-        };
-
-    let config_meta = ConfigMeta::from_file(config_path)?;
+    let config_meta = ConfigMeta::from_file(&parsed.config)?;
 
     for target_id in config_meta.config.targets.keys() {
         if config_meta.config.custom_targets.contains_key(target_id) {

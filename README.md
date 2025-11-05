@@ -4,7 +4,7 @@ Polytest is a language-agnostic tool for generating test scaffolding and keeping
 
 ## Features
 
-- Define test plans in simple TOML or JSON format
+- Define test plans in simple JSON format
 - Reuse test cases via test groups and suites
 - Validate all test cases are implemented
 - Validate no tests are implemented that are not in the test plan
@@ -22,21 +22,21 @@ cargo install --git https://github.com/joe-p/polytest.git
 
 ### Configuration
 
-Polytest is entirely driven by a configuration file: `polytest.json` or `polytest.toml`. This configuration file is used to define the test plan and describe the test generation and validation targets. See [example/shapes/polytest.json](examples/shapes/polytest.json) for a JSON example or [example/shapes/polytest.toml](examples/shapes/polytest.toml) for a TOML example of how to define a test plan and targets. The generated test scaffolding can be seen for [pytest](examples/shapes/implementations/python/tests) and [bun](examples/shapes/implementations/bun/__tests__). This example also contains a [markdown test plan](./examples/shapes/documents/plan.md) file that is automatically generated from the configuration file.
+Polytest is entirely driven by a JSON configuration file. This configuration file is used to define the test plan and describe the test generation and validation targets. See [example/shapes/polytest.json](examples/shapes/polytest.json) for an of how to define a test plan and targets. The generated test scaffolding can be seen for [pytest](examples/shapes/implementations/python/tests) and [bun](examples/shapes/implementations/bun/__tests__). This example also contains a [markdown test plan](./examples/shapes/documents/plan.md) file that is automatically generated from the configuration file.
 
 For more information on configuration, see [docs/configuration.md](./docs/configuration.md).
 
 ### Generate
 
-In any directory with a `polytest.json` or `polytest.toml` file, run `polytest generate` to generate the test scaffolding for all targets. Any files that do not yet exist will be created and test cases without implementations will have scaffolding generated. Any existing code will not be overwritten.
+In any directory with a `polytest.json` file, run `polytest generate` to generate the test scaffolding for all targets. Any files that do not yet exist will be created and test cases without implementations will have scaffolding generated. Any existing code will not be overwritten.
 
 ### Validate
 
-In any directory with a `polytest.json` or `polytest.toml` file, run `polytest validate` to validate that all test cases are implemented and that no tests are implemented that are not in the test plan.
+In any directory with a `polytest.json` file, run `polytest validate` to validate that all test cases are implemented and that no tests are implemented that are not in the test plan.
 
 ### Run
 
-In any directory with a `polytest.json` or `polytest.toml` file, run `polytest run` to run all test cases.
+In any directory with a `polytest.json` file, run `polytest run` to run all test cases.
 
 ## FAQs
 
