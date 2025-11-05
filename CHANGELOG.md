@@ -1,13 +1,15 @@
 # UNRELEASED: 0.4.0
 
+## Breaking Changes
+
+- Removed support for TOML in favor of JSON (and JSONC)
+
 ## Features
 
-- Add support for JSONC (JSON with comments)
 - Add `--config` flag to specify custom config file path
 - Add `--git` flag to enable/disable git integration (git is now optional)
 - Add support for vitest test framework
 - Add ability to dump default targets
-- Support JSON config format (in addition to TOML)
 
 ## Fixes
 
@@ -18,7 +20,6 @@
 - Fix vitest regex
 - Use proper relative directory for runner `work_dir`
 - Make `out_file` relative to the config root
-
 
 # 0.3.0
 
