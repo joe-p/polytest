@@ -22,7 +22,7 @@ cargo install --git https://github.com/joe-p/polytest.git
 
 ### Configuration
 
-Polytest is entirely driven by a JSON configuration file. This configuration file is used to define the test plan and describe the test generation and validation targets. See [example/shapes/polytest.json](examples/shapes/polytest.json) for an of how to define a test plan and targets. The generated test scaffolding can be seen for [pytest](examples/shapes/implementations/python/tests) and [bun](examples/shapes/implementations/bun/__tests__). This example also contains a [markdown test plan](./examples/shapes/documents/plan.md) file that is automatically generated from the configuration file.
+Polytest is entirely driven by a JSON configuration file. This configuration file is used to define the test plan and describe the test generation and validation targets. See [example/shapes/polytest.json](examples/shapes/polytest.json) for an example of how to define a test plan and targets. The generated test scaffolding can be seen for [pytest](examples/shapes/implementations/python/tests) and [bun](examples/shapes/implementations/bun/__tests__). This example also contains a [markdown test plan](./examples/shapes/documents/plan.md) file that is automatically generated from the configuration file.
 
 For more information on configuration, see [docs/configuration.md](./docs/configuration.md).
 
