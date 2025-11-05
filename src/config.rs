@@ -27,13 +27,10 @@ impl ConfigMeta {
             full_path.display()
         ))?;
 
-        let config: Config = if path.ends_with(".json") || path.ends_with(".jsonc") {
-            let stripped = StripComments::new(contents.as_bytes());
+        let stripped = StripComments::new(contents.as_bytes());
 
-            serde_json::from_reader(stripped).context("failed to parse config file")?
-        } else {
-            toml::from_str(&contents).context("failed to parse config file")?
-        };
+        let config = serde_json::from_reader(stripped).context("failed to parse config file")?;
+
         Ok(Self {
             root_dir: PathBuf::from(path)
                 .parent()

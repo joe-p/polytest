@@ -1,6 +1,6 @@
 # Polytest Configuration
 
-Polytest is configured via a configuration file named `polytest.toml` or `polytest.json` by default. The configuration file can be in TOML or JSON format. All Polytest configuration, including test suite definitions, is done via this file. This file is the one source of truth for Polytest, ensuring there is no confusion about the current state of the test plan.
+Polytest is configured via a configuration file named `polytest.json` by default. The configuration file must be in JSON or JSONC (JSON with comments) format. All Polytest configuration, including test suite definitions, is done via this file. This file is the one source of truth for Polytest, ensuring there is no confusion about the current state of the test plan.
 
 ## name
 
