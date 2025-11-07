@@ -1,5 +1,6 @@
 use color_eyre::eyre::{eyre, Context, ContextCompat, Result};
 use convert_case::{Case, Casing};
+use std::path::Path;
 
 use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
 use crate::runner::Runner;
@@ -51,6 +52,44 @@ pub fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> S
         }
         None => panic!("Keyword not found: {}", keyword),
     }
+}
+
+/// Recursively copy a directory and its contents
+fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
+    std::fs::create_dir_all(dst)
+        .context(format!("failed to create directory {}", dst.display()))?;
+    
+    for entry in std::fs::read_dir(src)
+        .context(format!("failed to read directory {}", src.display()))? 
+    {
+        let entry = entry?;
+        let path = entry.path();
+        let file_name = entry.file_name();
+        let dest_path = dst.join(&file_name);
+        
+        // Check if the entry is a symlink
+        let metadata = std::fs::symlink_metadata(&path)
+            .context(format!("failed to read metadata for {}", path.display()))?;
+        
+        if metadata.is_symlink() {
+            return Err(eyre!(
+                "Symlinks are not supported in resource_dir: {}",
+                path.display()
+            ));
+        }
+        
+        if path.is_dir() {
+            copy_dir_all(&path, &dest_path)?;
+        } else {
+            std::fs::copy(&path, &dest_path).context(format!(
+                "failed to copy {} to {}",
+                path.display(),
+                dest_path.display()
+            ))?;
+        }
+    }
+    
+    Ok(())
 }
 
 pub struct Renderer {
@@ -143,6 +182,32 @@ impl Renderer {
         }
 
         Ok(Self { env, config_meta })
+    }
+
+    fn copy_resources(&self, target: &Target) -> Result<()> {
+        // Check if both the global resource_dir and target's resource_dir are set
+        if let (Some(source_dir), Some(target_dir)) = 
+            (&self.config_meta.config.resource_dir, &target.resource_dir) 
+        {
+            let source_path = self.config_meta.root_dir.join(source_dir);
+            
+            if source_path.exists() {
+                println!(
+                    "Copying resources from {} to {}",
+                    source_path.display(),
+                    target_dir.display()
+                );
+                
+                copy_dir_all(&source_path, target_dir)?;
+            } else {
+                println!(
+                    "Warning: resource_dir '{}' does not exist, skipping resource copy",
+                    source_path.display()
+                );
+            }
+        }
+        
+        Ok(())
     }
 
     pub fn generate_suite(&self, target: &Target) -> Result<()> {
@@ -275,6 +340,9 @@ impl Renderer {
                 target.id
             ))?;
         }
+
+        // Copy resources after generating all suite files
+        self.copy_resources(target)?;
 
         Ok(())
     }

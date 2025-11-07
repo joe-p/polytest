@@ -298,6 +298,7 @@ fn main() -> Result<()> {
                     &default_target.to_string(),
                     &TargetConfig {
                         out_dir: PathBuf::from("tests/generated"),
+                        resource_dir: None,
                         runners: None,
                     },
                     &config_meta.root_dir,

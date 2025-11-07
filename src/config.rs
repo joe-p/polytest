@@ -47,6 +47,9 @@ pub struct Config {
 
     pub package_name: String,
 
+    #[serde(default)]
+    pub resource_dir: Option<PathBuf>,
+
     #[serde(rename = "document")]
     #[serde(default)]
     pub documents: HashMap<String, DocumentConfig>,
