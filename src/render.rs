@@ -67,6 +67,17 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
         let file_name = entry.file_name();
         let dest_path = dst.join(&file_name);
         
+        // Check if the entry is a symlink
+        let metadata = std::fs::symlink_metadata(&path)
+            .context(format!("failed to read metadata for {}", path.display()))?;
+        
+        if metadata.is_symlink() {
+            return Err(eyre!(
+                "Symlinks are not supported in resource_dir: {}",
+                path.display()
+            ));
+        }
+        
         if path.is_dir() {
             copy_dir_all(&path, &dest_path)?;
         } else {
