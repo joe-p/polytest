@@ -2,6 +2,7 @@
   // Test comment
   "name": "Shapes Test Plan",
   "package_name": "shapes",
+  "resource_dir": "./resources",
   "suite": {
     "circle": {
       "groups": ["shape", "circle"]
@@ -62,16 +63,20 @@
   },
   "target": {
     "pytest": {
-      "out_dir": "./implementations/python/tests"
+      "out_dir": "./implementations/python/tests",
+      "resource_dir": "./implementations/python/tests/resources"
     },
     "bun": {
-      "out_dir": "./implementations/bun/__tests__"
+      "out_dir": "./implementations/bun/__tests__",
+      "resource_dir": "./implementations/bun/__tests__/resources"
     },
     "vitest": {
-      "out_dir": "./implementations/vitest/__tests__"
+      "out_dir": "./implementations/vitest/__tests__",
+      "resource_dir": "./implementations/vitest/__tests__/resources"
     },
     "swift": {
       "out_dir": "./implementations/swift/Tests/ShapesTests",
+      "resource_dir": "./implementations/swift/Tests/ShapesTests/Resources",
       "runner": {
         "Catalyst": {
           "command": "xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination 'platform=macOS,variant=Mac Catalyst'"

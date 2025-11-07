@@ -88,6 +88,7 @@ impl DefaultTarget {
                     suite_file_name_template: "test_{{ suite.name | convert_case('Snake') }}.py"
                         .to_string(),
                     out_dir: target_out_dir,
+                    resource_dir: config.resource_dir.as_ref().map(|p| config_root.join(p)),
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
@@ -111,6 +112,7 @@ impl DefaultTarget {
                     suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
                         .to_string(),
                     out_dir: target_out_dir,
+                    resource_dir: config.resource_dir.as_ref().map(|p| config_root.join(p)),
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
@@ -134,6 +136,7 @@ impl DefaultTarget {
                     suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
                         .to_string(),
                     out_dir: target_out_dir,
+                    resource_dir: config.resource_dir.as_ref().map(|p| config_root.join(p)),
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
@@ -157,6 +160,7 @@ impl DefaultTarget {
                     suite_file_name_template:
                         "{{ suite.name | convert_case('Pascal') }}Tests.swift".to_string(),
                     out_dir: target_out_dir,
+                    resource_dir: config.resource_dir.as_ref().map(|p| config_root.join(p)),
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
@@ -197,6 +201,7 @@ impl DefaultTarget {
 pub struct Target {
     pub id: String,
     pub out_dir: PathBuf,
+    pub resource_dir: Option<PathBuf>,
     pub test_regex_template: String,
     pub suite_file_name_template: String,
     pub suite_template: String,
@@ -237,6 +242,7 @@ impl Target {
             id: id.to_string(),
             test_regex_template: "(?m)".to_owned() + config.test_regex_template.as_str(),
             out_dir: config_root.join(&config.out_dir),
+            resource_dir: config.resource_dir.as_ref().map(|p| config_root.join(p)),
             suite_file_name_template: config.suite_file_name_template.clone(),
             suite_template,
             group_template,
@@ -254,6 +260,9 @@ impl Target {
 pub struct TargetConfig {
     pub out_dir: PathBuf,
 
+    #[serde(default)]
+    pub resource_dir: Option<PathBuf>,
+
     #[serde(rename = "runner")]
     pub runners: Option<IndexMap<String, RunnerConfig>>,
 }
@@ -261,6 +270,9 @@ pub struct TargetConfig {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CustomTargetConfig {
     out_dir: PathBuf,
+
+    #[serde(default)]
+    resource_dir: Option<PathBuf>,
 
     test_regex_template: String,
     suite_file_name_template: String,
@@ -274,6 +286,7 @@ impl From<Target> for CustomTargetConfig {
     fn from(target: Target) -> Self {
         Self {
             out_dir: target.out_dir,
+            resource_dir: target.resource_dir,
             test_regex_template: target.test_regex_template,
             suite_file_name_template: target.suite_file_name_template,
             template_dir: PathBuf::from(""),
