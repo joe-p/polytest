@@ -10,6 +10,7 @@
 - Add `--git` flag to enable/disable git integration (git is now optional)
 - Add support for vitest test framework
 - Add ability to dump default targets
+- Add `resource_dir` to top-level and target configs to specify a directory that is copied before generating or running tests
 
 ## Fixes
 
