@@ -360,6 +360,11 @@ fn main() -> Result<()> {
                 None => all_targets,
             };
 
+            // Copy resources for all targets before running tests
+            for target in &targets {
+                renderer.copy_resources(target)?;
+            }
+
             let mut active_runners = Vec::<ActiveRunner>::new();
 
             for target in &targets {
