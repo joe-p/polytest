@@ -5,7 +5,7 @@ license = "MIT"
 description = "A low-friction language-agnostic tool for keeping tests in sync across teams and implementations"
 repository = "https://github.com/joe-p/polytest"
 exclude = ["examples/"]
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
