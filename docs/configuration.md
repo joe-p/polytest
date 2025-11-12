@@ -18,6 +18,22 @@ The test plan is named via the `name` field. This is generally only used for dis
 
 The `package_name` defines the name of the package being tested. This is primarily used in some of the templates for importing. For example, in Swift the template starts with a `import {{ package_name | convert_case('Pascal')`
 
+## version
+
+The `version` field is **required** and specifies the version of polytest that the configuration file is compatible with. The version **must** be in MAJOR.MINOR format only (e.g., `"0.4"`), without the PATCH version. Polytest will validate that this MAJOR.MINOR version matches the MAJOR.MINOR version of the polytest binary being used. This helps ensure compatibility between the configuration file and the polytest tool while allowing for patch updates.
+
+If the version field is missing, polytest will exit with an error message asking you to add it. If the version is not in MAJOR.MINOR format (e.g., `"0.4.0"` with three components), polytest will exit with an error asking you to remove the PATCH version. If the MAJOR.MINOR version does not match the binary version, polytest will exit with an error message indicating the version mismatch.
+
+### Example
+
+```json
+{
+  "name": "Shapes Test Plan",
+  "package_name": "shapes",
+  "version": "0.4"  // Must be MAJOR.MINOR format only (no PATCH version)
+}
+```
+
 ## suite.\<SUITE_NAME>
 
 Test suites are a collection of tests. For most implementations this roughly maps to the tests in a single file. Test cases are defined under the `suite` object.

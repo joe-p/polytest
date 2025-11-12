@@ -2,6 +2,7 @@
   // Test comment
   "name": "Shapes Test Plan",
   "package_name": "shapes",
+  "version": "0.4",
   "resource_dir": "./resources",
   "suite": {
     "circle": {
