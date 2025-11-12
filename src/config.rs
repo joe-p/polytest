@@ -1,8 +1,12 @@
 use color_eyre::eyre::{bail, Context, Result};
 use indexmap::IndexMap;
 use json_comments::StripComments;
+use regex::Regex;
 use serde::Deserialize;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
+
+static VALID_NAME_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_\- ]+$").unwrap());
 
 use crate::{
     document::DocumentConfig,
@@ -76,13 +80,18 @@ impl ConfigMeta {
             }
         }
 
-        Ok(Self {
+        let config_meta = Self {
             root_dir: PathBuf::from(path)
                 .parent()
                 .unwrap_or(PathBuf::from(".").as_path())
                 .to_path_buf(),
             config,
-        })
+        };
+
+        // Validate test, suite, and group names
+        config_meta.validate_names()?;
+
+        Ok(config_meta)
     }
 }
 
@@ -114,4 +123,51 @@ pub struct Config {
 
     #[serde(rename = "group")]
     pub groups: IndexMap<String, GroupConfig>,
+}
+
+impl ConfigMeta {
+    /// Validates that a name contains only alphanumeric characters, underscores, dashes, and spaces
+    fn validate_name(name: &str, name_type: &str) -> Result<()> {
+        if name.is_empty() {
+            bail!("{} name cannot be empty", name_type);
+        }
+
+        // Maybe we just wanr on leading/trailing, but for now we'll error because I can't think of a reason
+        // to intentionally want this
+        if name.starts_with(" ") || name.ends_with(" ") {
+            bail!("{} name cannot start or end with a space", name_type);
+        }
+
+        if !VALID_NAME_REGEX.is_match(name) {
+            bail!(
+                "{} name '{}' contains invalid characters. Only alphanumeric characters, underscores (_), dashes (-), and spaces are allowed.",
+                name_type,
+                name
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Validates all test, suite, and group names in the configuration
+    fn validate_names(&self) -> Result<()> {
+        // Validate suite names
+        for suite_id in self.config.suites.keys() {
+            Self::validate_name(suite_id, "Suite")?;
+        }
+
+        // Validate group names
+        for group_id in self.config.groups.keys() {
+            Self::validate_name(group_id, "Group")?;
+        }
+
+        // Validate test names within groups
+        for (group_id, group_config) in &self.config.groups {
+            for test_id in group_config.tests.keys() {
+                Self::validate_name(test_id, &format!("Test (in group '{}')", group_id))?;
+            }
+        }
+
+        Ok(())
+    }
 }
