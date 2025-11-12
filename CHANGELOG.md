@@ -3,6 +3,7 @@
 ## Breaking Changes
 
 - Add required `version` field to config that must be in MAJOR.MINOR format (e.g., "0.4") and validates against polytest binary to ensure compatibility
+- Suite, group, and test names must be alphanumeric. Spaces, `_`, and `-` are also allowed.
 
 # 0.4.0
 
