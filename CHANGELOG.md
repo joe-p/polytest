@@ -1,3 +1,9 @@
+# UNRELEASED: 0.5.0
+
+## Breaking Changes
+
+- Add required `version` field to config that must be in MAJOR.MINOR format (e.g., "0.4") and validates against polytest binary to ensure compatibility
+
 # 0.4.0
 
 ## Breaking Changes

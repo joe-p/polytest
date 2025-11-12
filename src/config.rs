@@ -1,4 +1,4 @@
-use color_eyre::eyre::{Context, Result};
+use color_eyre::eyre::{bail, Context, Result};
 use indexmap::IndexMap;
 use json_comments::StripComments;
 use serde::Deserialize;
@@ -29,7 +29,52 @@ impl ConfigMeta {
 
         let stripped = StripComments::new(contents.as_bytes());
 
-        let config = serde_json::from_reader(stripped).context("failed to parse config file")?;
+        let config: Config =
+            serde_json::from_reader(stripped).context("failed to parse config file")?;
+
+        // Validate version is present and MAJOR.MINOR matches Cargo.toml
+        const CARGO_VERSION: &str = env!("CARGO_PKG_VERSION");
+        match &config.version {
+            None => {
+                let cargo_major_minor = CARGO_VERSION
+                    .split('.')
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .join(".");
+                bail!(
+                    "Config is missing required 'version' field. Please add '\"version\": \"{}\"' to your polytest.json file in MAJOR.MINOR format.",
+                    cargo_major_minor
+                );
+            }
+            Some(config_version) => {
+                // Enforce that config version is MAJOR.MINOR format only
+                let version_parts: Vec<&str> = config_version.split('.').collect();
+                if version_parts.len() != 2 {
+                    bail!(
+                        "Config version must be in MAJOR.MINOR format (e.g., \"0.4\"), but found '{}' with {} components. Please remove the PATCH version.",
+                        config_version,
+                        version_parts.len()
+                    );
+                }
+
+                // Extract MAJOR.MINOR from cargo version
+                let cargo_major_minor = CARGO_VERSION
+                    .split('.')
+                    .take(2)
+                    .collect::<Vec<_>>()
+                    .join(".");
+
+                if config_version != &cargo_major_minor {
+                    bail!(
+                        "Config version mismatch: polytest.json specifies version '{}' but polytest binary is version '{}' (MAJOR.MINOR: {}). Please update to '{}'.",
+                        config_version,
+                        CARGO_VERSION,
+                        cargo_major_minor,
+                        cargo_major_minor
+                    );
+                }
+            }
+        }
 
         Ok(Self {
             root_dir: PathBuf::from(path)
@@ -46,6 +91,8 @@ pub struct Config {
     pub name: String,
 
     pub package_name: String,
+
+    pub version: Option<String>,
 
     #[serde(default)]
     pub resource_dir: Option<PathBuf>,
