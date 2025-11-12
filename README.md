@@ -15,7 +15,7 @@ Polytest is a language-agnostic tool for generating test scaffolding and keeping
 ## Installation
 
 ```bash
-cargo install --git https://github.com/joe-p/polytest.git
+cargo install polytest
 ```
 
 ## Usage
