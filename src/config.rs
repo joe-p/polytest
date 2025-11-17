@@ -36,45 +36,67 @@ impl ConfigMeta {
         let config: Config =
             serde_json::from_reader(stripped).context("failed to parse config file")?;
 
-        // Validate version is present and MAJOR.MINOR matches Cargo.toml
+        // Validate version is present and MAJOR.MINOR.PATCH matches requirements
         const CARGO_VERSION: &str = env!("CARGO_PKG_VERSION");
         match &config.version {
             None => {
-                let cargo_major_minor = CARGO_VERSION
-                    .split('.')
-                    .take(2)
-                    .collect::<Vec<_>>()
-                    .join(".");
                 bail!(
-                    "Config is missing required 'version' field. Please add '\"version\": \"{}\"' to your polytest.json file in MAJOR.MINOR format.",
-                    cargo_major_minor
+                    "Config is missing required 'version' field. Please add '\"version\": \"{}\"' to your polytest.json file in MAJOR.MINOR.PATCH format.",
+                    CARGO_VERSION
                 );
             }
             Some(config_version) => {
-                // Enforce that config version is MAJOR.MINOR format only
-                let version_parts: Vec<&str> = config_version.split('.').collect();
-                if version_parts.len() != 2 {
+                // Enforce that config version is MAJOR.MINOR.PATCH format
+                let config_parts: Vec<&str> = config_version.split('.').collect();
+                if config_parts.len() != 3 {
                     bail!(
-                        "Config version must be in MAJOR.MINOR format (e.g., \"0.4\"), but found '{}' with {} components. Please remove the PATCH version.",
+                        "Config version must be in MAJOR.MINOR.PATCH format (e.g., \"0.4.0\"), but found '{}' with {} components.",
                         config_version,
-                        version_parts.len()
+                        config_parts.len()
                     );
                 }
 
-                // Extract MAJOR.MINOR from cargo version
-                let cargo_major_minor = CARGO_VERSION
-                    .split('.')
-                    .take(2)
-                    .collect::<Vec<_>>()
-                    .join(".");
-
-                if config_version != &cargo_major_minor {
+                // Parse version components
+                let cargo_parts: Vec<&str> = CARGO_VERSION.split('.').collect();
+                if cargo_parts.len() != 3 {
                     bail!(
-                        "Config version mismatch: polytest.json specifies version '{}' but polytest binary is version '{}' (MAJOR.MINOR: {}). Please update to '{}'.",
+                        "Invalid binary version format: expected MAJOR.MINOR.PATCH format but found '{}' with {} components. This is a bug in the polytest binary.",
+                        CARGO_VERSION,
+                        cargo_parts.len()
+                    );
+                }
+                
+                let config_major = config_parts[0].parse::<u32>()
+                    .with_context(|| format!("Invalid MAJOR version component: '{}'", config_parts[0]))?;
+                let config_minor = config_parts[1].parse::<u32>()
+                    .with_context(|| format!("Invalid MINOR version component: '{}'", config_parts[1]))?;
+                let config_patch = config_parts[2].parse::<u32>()
+                    .with_context(|| format!("Invalid PATCH version component: '{}'", config_parts[2]))?;
+                
+                let cargo_major = cargo_parts[0].parse::<u32>()
+                    .with_context(|| format!("Invalid MAJOR version in Cargo.toml: '{}'", cargo_parts[0]))?;
+                let cargo_minor = cargo_parts[1].parse::<u32>()
+                    .with_context(|| format!("Invalid MINOR version in Cargo.toml: '{}'", cargo_parts[1]))?;
+                let cargo_patch = cargo_parts[2].parse::<u32>()
+                    .with_context(|| format!("Invalid PATCH version in Cargo.toml: '{}'", cargo_parts[2]))?;
+
+                // Check MAJOR.MINOR match exactly
+                if config_major != cargo_major || config_minor != cargo_minor {
+                    bail!(
+                        "Config version mismatch: polytest.json specifies version '{}' but polytest binary is version '{}'. MAJOR.MINOR must match exactly. Please update to '{}'.",
                         config_version,
                         CARGO_VERSION,
-                        cargo_major_minor,
-                        cargo_major_minor
+                        CARGO_VERSION
+                    );
+                }
+
+                // Check binary PATCH is >= config PATCH (binary can work with older patch versions)
+                if cargo_patch < config_patch {
+                    bail!(
+                        "Config PATCH version is too high: polytest.json specifies version '{}' but polytest binary is version '{}'. Binary PATCH version must be greater than or equal to config PATCH version. Please update polytest binary or downgrade config to '{}'.",
+                        config_version,
+                        CARGO_VERSION,
+                        CARGO_VERSION
                     );
                 }
             }
