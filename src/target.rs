@@ -1,4 +1,4 @@
-use color_eyre::eyre::{eyre, Context, Result, Report};
+use color_eyre::eyre::{eyre, Context, Report, Result};
 use glob::glob;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -69,6 +69,8 @@ impl DefaultTarget {
     ) -> Result<Target> {
         let runner_overrides = config.runners.clone().unwrap_or_default();
 
+        let js_test_regex = r#"(?m)test\(["']{{ name }}["'],"#.to_string();
+
         match self {
             DefaultTarget::Pytest => {
                 let target_out_dir = config_root.join(&config.out_dir);
@@ -108,7 +110,7 @@ impl DefaultTarget {
 
                 Ok(Target {
                     id: id.to_string(),
-                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
+                    test_regex_template: js_test_regex,
                     suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
                         .to_string(),
                     out_dir: target_out_dir,
@@ -132,7 +134,7 @@ impl DefaultTarget {
 
                 Ok(Target {
                     id: id.to_string(),
-                    test_regex_template: r#"(?m)test\("{{ name }}","#.to_string(),
+                    test_regex_template: js_test_regex,
                     suite_file_name_template: "{{ suite.name | convert_case('Snake') }}.test.ts"
                         .to_string(),
                     out_dir: target_out_dir,

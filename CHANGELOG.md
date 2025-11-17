@@ -1,3 +1,9 @@
+# UNRELEASED: 0.6.0
+
+## Fixes
+
+- fix: support both `"` and `‘` quotes in test parsing for JavaScript tests
+
 # 0.5.0
 
 ## Breaking Changes
