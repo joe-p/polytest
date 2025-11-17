@@ -1,5 +1,9 @@
 # UNRELEASED: 0.6.0
 
+## Breaking Changes
+
+- `version` field must now be in MAJOR.MINOR.PATCH format (e.g., "0.5.0"). MAJOR.MINOR must match exactly, and binary PATCH must be >= config PATCH
+
 ## Fixes
 
 - fix: support both `"` and `‘` quotes in test parsing for JavaScript tests
