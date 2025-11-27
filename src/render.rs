@@ -1,12 +1,18 @@
 use color_eyre::eyre::{eyre, Context, ContextCompat, Result};
 use convert_case::{Case, Casing};
+use regex::Regex;
 use std::path::Path;
+use std::sync::LazyLock;
 
 use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
 use crate::runner::Runner;
 use crate::target::Target;
 use crate::ConfigMeta;
 use crate::{document::Document, group::Group, suite::Suite, test::Test};
+
+// Regex to fix version patterns like v_1, V_2 back to v1, V2
+// This is needed because convert_case treats letter-to-number transitions as word boundaries
+static VERSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([vV])_(\d+)").unwrap());
 
 fn case_from_str(s: &str) -> Result<Case> {
     match s {
@@ -36,9 +42,11 @@ fn case_from_str(s: &str) -> Result<Case> {
 }
 
 fn convert_case_filter(input: &str, case: &str) -> String {
-    input.to_case(case_from_str(case).unwrap_or_else(|e| {
+    let result = input.to_case(case_from_str(case).unwrap_or_else(|e| {
         panic!("failed to convert case: {}", e);
-    }))
+    }));
+    // Fix version patterns like v_1, V_2 back to v1, V2 (preserving case)
+    VERSION_PATTERN.replace_all(&result, "$1$2").to_string()
 }
 
 pub fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
