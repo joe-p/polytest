@@ -1,3 +1,9 @@
+# 0.7.0
+
+## Breaking Changes
+
+- No longer treat character-digit sequences as word boundaries when converting between cases (i.e preserve `v2` as `v2` instead of `v_2`)
+
 # 0.6.0
 
 ## Breaking Changes
