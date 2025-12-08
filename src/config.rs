@@ -65,20 +65,26 @@ impl ConfigMeta {
                         cargo_parts.len()
                     );
                 }
-                
-                let config_major = config_parts[0].parse::<u32>()
-                    .with_context(|| format!("Invalid MAJOR version component: '{}'", config_parts[0]))?;
-                let config_minor = config_parts[1].parse::<u32>()
-                    .with_context(|| format!("Invalid MINOR version component: '{}'", config_parts[1]))?;
-                let config_patch = config_parts[2].parse::<u32>()
-                    .with_context(|| format!("Invalid PATCH version component: '{}'", config_parts[2]))?;
-                
-                let cargo_major = cargo_parts[0].parse::<u32>()
-                    .with_context(|| format!("Invalid MAJOR version in Cargo.toml: '{}'", cargo_parts[0]))?;
-                let cargo_minor = cargo_parts[1].parse::<u32>()
-                    .with_context(|| format!("Invalid MINOR version in Cargo.toml: '{}'", cargo_parts[1]))?;
-                let cargo_patch = cargo_parts[2].parse::<u32>()
-                    .with_context(|| format!("Invalid PATCH version in Cargo.toml: '{}'", cargo_parts[2]))?;
+
+                let config_major = config_parts[0].parse::<u32>().with_context(|| {
+                    format!("Invalid MAJOR version component: '{}'", config_parts[0])
+                })?;
+                let config_minor = config_parts[1].parse::<u32>().with_context(|| {
+                    format!("Invalid MINOR version component: '{}'", config_parts[1])
+                })?;
+                let config_patch = config_parts[2].parse::<u32>().with_context(|| {
+                    format!("Invalid PATCH version component: '{}'", config_parts[2])
+                })?;
+
+                let cargo_major = cargo_parts[0].parse::<u32>().with_context(|| {
+                    format!("Invalid MAJOR version in Cargo.toml: '{}'", cargo_parts[0])
+                })?;
+                let cargo_minor = cargo_parts[1].parse::<u32>().with_context(|| {
+                    format!("Invalid MINOR version in Cargo.toml: '{}'", cargo_parts[1])
+                })?;
+                let cargo_patch = cargo_parts[2].parse::<u32>().with_context(|| {
+                    format!("Invalid PATCH version in Cargo.toml: '{}'", cargo_parts[2])
+                })?;
 
                 // Check MAJOR.MINOR match exactly
                 if config_major != cargo_major || config_minor != cargo_minor {

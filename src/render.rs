@@ -1,18 +1,12 @@
 use color_eyre::eyre::{eyre, Context, ContextCompat, Result};
-use convert_case::{Case, Casing};
-use regex::Regex;
+use convert_case::{Boundary, Case, Converter};
 use std::path::Path;
-use std::sync::LazyLock;
 
 use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
 use crate::runner::Runner;
 use crate::target::Target;
 use crate::ConfigMeta;
 use crate::{document::Document, group::Group, suite::Suite, test::Test};
-
-// Regex to fix version patterns like v_1, V_2 back to v1, V2
-// This is needed because convert_case treats letter-to-number transitions as word boundaries
-static VERSION_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([vV])_(\d+)").unwrap());
 
 fn case_from_str(s: &str) -> Result<Case> {
     match s {
@@ -42,11 +36,21 @@ fn case_from_str(s: &str) -> Result<Case> {
 }
 
 fn convert_case_filter(input: &str, case: &str) -> String {
-    let result = input.to_case(case_from_str(case).unwrap_or_else(|e| {
+    let target_case = case_from_str(case).unwrap_or_else(|e| {
         panic!("failed to convert case: {}", e);
-    }));
-    // Fix version patterns like v_1, V_2 back to v1, V2 (preserving case)
-    VERSION_PATTERN.replace_all(&result, "$1$2").to_string()
+    });
+
+    // Use default boundaries but exclude letter-to-digit transitions (UpperDigit, LowerDigit)
+    // This prevents "v1" from becoming "v_1" in snake_case
+    let boundaries: Vec<Boundary> = Boundary::defaults()
+        .into_iter()
+        .filter(|b| !Boundary::letter_digit().contains(b))
+        .collect();
+
+    Converter::new()
+        .set_boundaries(&boundaries)
+        .to_case(target_case)
+        .convert(input)
 }
 
 pub fn insert_after_keyword(original: &str, to_insert: &str, keyword: &str) -> String {
@@ -532,5 +536,29 @@ impl Renderer {
                 test_name => minijinja::Value::from(&test.name),
             })
             .context(format!("failed to render fail regex for {}", target_runner))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::convert_case_filter;
+
+    #[test]
+    fn convert_case_filter_handles_edge_cases() {
+        let cases = [
+            ("v1", "Snake", "v1"),                  // letter-digit boundary preserved
+            ("testV1", "Snake", "test_v1"),         // camel to snake with digit
+            ("HelloWorld", "Snake", "hello_world"), // standard camel to snake
+            ("hello_world", "Camel", "helloWorld"), // snake to camel
+            ("version2Release", "Snake", "version2_release"), // digit-to-letter boundary
+        ];
+
+        for (input, case, expected) in cases {
+            assert_eq!(
+                convert_case_filter(input, case),
+                expected,
+                "{input:?} | {case}"
+            );
+        }
     }
 }
