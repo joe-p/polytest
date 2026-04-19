@@ -186,10 +186,7 @@
   <tbody>
     <tr>
       <td><a href="#desc-new-line">desc_new_line</a></td>
-      <td>Here
-Are
-New
-Lines</td>
+      <td>Here<br/>Are<br/>New<br/>Lines</td>
     </tr>
   </tbody>
 </table>

@@ -17,7 +17,7 @@
     {% for group in suite.groups %}
     <tr>
       <td><a href="#{{ group.name | convert_case('Kebab') }}">{{ group.name }}</a></td>
-      <td>{{ group.desc }}</td>
+      <td>{{ group.desc | replace('\n', '<br/>') }}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -41,7 +41,7 @@
     {% for test in group.tests %}
     <tr>
       <td><a href="#{{ test.name | convert_case('Kebab') }}">{{ test.name }}</a></td>
-      <td>{{ test.desc }}</td>
+      <td>{{ test.desc | replace('\n', '<br/>') }}</td>
     </tr>
     {% endfor %}
   </tbody>
