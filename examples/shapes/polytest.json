@@ -13,6 +13,9 @@
     },
     "triangle": {
       "groups": ["shape", "polygon"]
+    },
+    "extra": {
+      "groups": ["extra"]
     }
   },
   "group": {
@@ -60,7 +63,16 @@
           "exclude_targets": ["swift"]
         }
       }
+    },
+    "extra": {
+      "desc": "Extra tests not related to shapes but to test/show examples of extra functionality",
+      "test": {
+        "desc_new_line": {
+          "desc": "Here\nAre\nNew\nLines"
+        }
+      }
     }
+
   },
   "target": {
     "pytest": {
