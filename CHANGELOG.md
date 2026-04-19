@@ -1,3 +1,9 @@
+# 0.8.0
+
+## Features
+
+- Add test description comment generation to vitest and bun templates
+
 # 0.7.0
 
 ## Breaking Changes

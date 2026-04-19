@@ -2,5 +2,7 @@
 
 @pytest.mark.group_{{ group_name | convert_case('Snake') }}
 def test_{{ test.name | convert_case('Snake') }}():
-    """{{ test.desc }}"""
+    """
+    {{ test.desc | indent(4) }}
+    """
     raise Exception("TEST NOT IMPLEMENTED")
