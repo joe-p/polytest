@@ -1,3 +1,9 @@
+# UNRELEASED 0.8.1
+
+## Fixes
+
+- Fix vitest result parsing
+
 # 0.8.0
 
 ## Features
