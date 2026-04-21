@@ -1,8 +1,9 @@
-# UNRELEASED 0.8.1
+# UNRELEASED: 0.8.1
 
 ## Fixes
 
 - Fix vitest result parsing
+- Fix support for multiple lines in `desc` fields in Markdown tables
 
 # 0.8.0
 

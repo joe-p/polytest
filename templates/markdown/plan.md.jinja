@@ -1,32 +1,59 @@
 # Polytest Test Plan
+
 ## Test Suites
+
 {% for suite in suites %}
 
 ### {{ suite.name | convert_case('Title') }}
 
-| Name | Description |
-| --- | --- |
-{% for group in suite.groups %}
-| [{{ group.name }}](#{{ group.name | convert_case('Kebab') }}) | {{ group.desc }} |
-{% endfor %}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for group in suite.groups %}
+    <tr>
+      <td><a href="#{{ group.name | convert_case('Kebab') }}">{{ group.name }}</a></td>
+      <td>{{ group.desc | replace('\n', '<br/>') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endfor %}
 
 ## Test Groups
+
 {% for group in groups %}
 
 ### {{ group.name | convert_case('Title') }}
 
-| Name | Description |
-| --- | --- |
-{% for test in group.tests %}
-| [{{ test.name }}](#{{ test.name | convert_case('Kebab') }}) | {{ test.desc }} |
-{% endfor %}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for test in group.tests %}
+    <tr>
+      <td><a href="#{{ test.name | convert_case('Kebab') }}">{{ test.name }}</a></td>
+      <td>{{ test.desc | replace('\n', '<br/>') }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
 {% endfor %}
 
 ## Test Cases
+
 {% for test in tests %}
 
 ### {{ test.name }}
 
 {{ test.desc }}
 {% endfor %}
+
