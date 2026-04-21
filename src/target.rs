@@ -69,7 +69,7 @@ impl DefaultTarget {
     ) -> Result<Target> {
         let runner_overrides = config.runners.clone().unwrap_or_default();
 
-        let js_test_regex = r#"(?m)test\(["']{{ name }}["'],"#.to_string();
+        let js_test_regex = r#"(?m)test(\.skip)?\(["']{{ name }}["'],"#.to_string();
 
         match self {
             DefaultTarget::Pytest => {

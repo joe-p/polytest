@@ -11,7 +11,9 @@ describe("extra", () => {
       New
       Lines
      */
-    test("desc_new_line", () => { });
+    test.skip("desc_new_line", () => {
+      throw Error('SHOULD BE SKIPPED!')
+    });
 
   });
 

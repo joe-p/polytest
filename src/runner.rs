@@ -63,7 +63,7 @@ impl DefaultRunner {
                             .to_string(),
                     ),
                     pass_regex_template: Some(
-                        r"\(pass\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$"
+                        r"\((pass|skip)\) {{ suite_name }} > {{ group_name }} > {{ test_name }}( \[\d+\.\d+ms])*$"
                             .to_string(),
                     ),
                     work_dir: Some(target_config.out_dir.clone()),
