@@ -79,7 +79,7 @@ impl DefaultRunner {
                             .to_string(),
                     ),
                     pass_regex_template: Some(
-                        "✓.*{{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}"
+                        "[✓↓].*{{ file_name }} > {{ suite_name }} > {{ group_name }} > {{ test_name }}"
                             .to_string(),
                     ),
                     work_dir: Some(target_config.out_dir.clone()),
