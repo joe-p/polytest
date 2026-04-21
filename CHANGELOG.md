@@ -4,6 +4,7 @@
 
 - Fix vitest result parsing
 - Fix support for multiple lines in `desc` fields in Markdown tables
+- Fix parsing of skipped JS tests
 
 # 0.8.0
 
