@@ -12,20 +12,20 @@ In this repo, define the Polytest configuration file(s). All the paths within th
 
 For example, if the tests in `my-lib-py` live in `tests/polytest_tests`, then the paths in the configuration should be written as `../tests/polytes_tests`.
 
-### Step 2. Add Polytest Test Runner with Git Flag
+### Step 2. Add Polytest with Git Flag
 
-In each implementation repo, add a script to execute Polytest with the `--git` flag pointing to the Polytest configuration repo
+In each implementation repo, add a script to execute Polytest with the `--git` flag pointing to the Polytest configuration repo.
 
 For example, in TypeScript, you might add a script to your `package.json` like this:
 
 ```json
 "scripts": {
-  "polytest": "polytest run --git https://github.com/my-org/my-lib-polytest.git#main run -t vitest"
+  "polytest": "polytest generate --git https://github.com/my-org/my-lib-polytest.git#main"
 ```
 
 The `#main` at the end of the URL specifies the branch to use. You can change this to point to any branch, tag, or commit hash.
 
-## Workflow: Running Local Tests
+## Workflow: Generating and Validating Tests
 
 When developing, you might not want to push changes to the Polytest configuration repo every time you want to change tests. In this case, you can clone the directory locally and run polytest from there. It is important to ensure the path you clone into is in the root of the implementation repo so that the relative paths in the configuration file work correctly. This path should also be ignored by git.
 
@@ -43,17 +43,18 @@ For example:
 git clone https://github.com/my-org/my-lib-polytest.git
 ```
 
-**polytest command**:
+**polytest commands**:
 
 ```bash
-polytest --config ./my-lib-polytest/my_suite.json run -t vitest
+polytest --config ./my-lib-polytest/my_suite.json generate -t vitest
+polytest --config ./my-lib-polytest/my_suite.json validate -t vitest
 ```
 
 **package.json**:
 
 ```json
 "scripts": {
-  "polytest:dev": "polytest --config ./my-lib-polytest/my_suite.json run -t vitest"
+  "polytest:dev": "polytest --config ./my-lib-polytest/my_suite.json generate -t vitest && polytest --config ./my-lib-polytest/my_suite.json validate -t vitest"
 }
 ```
 
@@ -73,13 +74,15 @@ This, however, may not be viable when there are major breaking changes to the Po
 
 ```json
 "scripts": {
-  "polytest": "polytest run --git https://github.com/my-org/my-lib-polytest.git#feat!/some_big_breaking_change run -t vitest"
+  "polytest": "polytest generate --git https://github.com/my-org/my-lib-polytest.git#feat!/some_big_breaking_change"
 ```
 
 Production releases, however, should always point to `main` to ensure stability and feature parity. This can be enforced in CI/CD pipelines by hard-coding the Polytest command in the pipeline configuration:
 
 ```yaml
 steps:
-  - name: Run Polytest
-    run: polytest run --git https://github.com/my-org/my-lib-polytest.git#main run -t vitest
+  - name: Generate Polytest tests
+    run: polytest generate --git https://github.com/my-org/my-lib-polytest.git#main
+  - name: Validate Polytest tests
+    run: polytest validate --git https://github.com/my-org/my-lib-polytest.git#main
 ```

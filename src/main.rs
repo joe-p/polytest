@@ -1,21 +1,13 @@
-use clap::{command, Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use color_eyre::eyre::ensure;
 use color_eyre::eyre::{eyre, Context, Result};
-use duct::cmd;
-use duct::Handle;
 use indexmap::IndexMap;
-use regex::Regex;
-use std::collections::HashMap;
 use std::env;
 use std::fmt::Display;
-use std::io::prelude::*;
-use std::io::BufReader;
 use std::path::PathBuf;
-use std::process::ExitStatus;
 
 use crate::config::ConfigMeta;
 use crate::render::Renderer;
-use crate::suite::Suite;
 use crate::target::CustomTargetConfig;
 use crate::target::DefaultTarget;
 use crate::target::Target;
@@ -27,7 +19,6 @@ mod document;
 mod group;
 mod parsing;
 mod render;
-mod runner;
 mod suite;
 mod target;
 mod test;
@@ -65,9 +56,6 @@ enum Commands {
     /// Validate test files
     Validate(Validate),
 
-    /// Run tests
-    Run(Run),
-
     /// Dump default target configurations
     DumpDefaultTargets,
 }
@@ -88,28 +76,6 @@ struct Validate {
     /// A target to validate tests for
     #[arg(short, long)]
     target: Option<Vec<String>>,
-}
-
-#[derive(Args)]
-struct Run {
-    /// A target to execute the runner for
-    #[arg(short, long)]
-    target: Option<Vec<String>>,
-
-    /// Do not parse the results to determine if all test cases were ran and instead just rely on
-    /// exit status of the runner(s)
-    #[arg(long)]
-    no_parse: bool,
-
-    /// Do not run the test runners in parallel
-    #[arg(long, default_value_t = false)]
-    no_parallel: bool,
-}
-
-struct ActiveRunner {
-    target: Target,
-    runner_id: String,
-    handle: Handle,
 }
 
 #[derive(Clone, PartialEq)]
@@ -299,7 +265,6 @@ fn main() -> Result<()> {
                     &TargetConfig {
                         out_dir: PathBuf::from("tests/generated"),
                         resource_dir: None,
-                        runners: None,
                     },
                     &config_meta.root_dir,
                 )?;
@@ -345,172 +310,6 @@ fn main() -> Result<()> {
 
             for target in targets {
                 validate_target(&config_meta, &target, &renderer)?;
-            }
-        }
-        Commands::Run(run) => {
-            let mut statuses = IndexMap::<(String, String), ExitStatus>::new();
-            let mut outputs = HashMap::<String, String>::new();
-
-            let targets = match run.target {
-                Some(target_ids) => all_targets
-                    .into_iter()
-                    .filter(|target| target_ids.contains(&target.id))
-                    .collect(),
-
-                None => all_targets,
-            };
-
-            // Copy resources for all targets before running tests
-            for target in &targets {
-                renderer.copy_resources(target)?;
-            }
-
-            let mut active_runners = Vec::<ActiveRunner>::new();
-
-            for target in &targets {
-                for (runner_id, runner) in &target.runners {
-                    let rendered_cmd = renderer.render_cmd(runner)?;
-
-                    println!("Running {} > {}: {}", target.id, runner_id, rendered_cmd);
-
-                    let parsed_cmd: Vec<String> = shlex::Shlex::new(&rendered_cmd).collect();
-
-                    let mut runner_cmd = cmd(&parsed_cmd[0], &parsed_cmd[1..])
-                        .dir(config_meta.root_dir.join(runner.work_dir.clone()))
-                        .unchecked()
-                        .stderr_to_stdout();
-
-                    if let Some(env) = &runner.env {
-                        for (key, value) in env {
-                            runner_cmd = runner_cmd.env(key, value);
-                        }
-                    }
-
-                    if run.no_parallel {
-                        let reader = runner_cmd.reader()?;
-                        let output = &mut String::new();
-                        BufReader::new(reader).read_to_string(output)?;
-
-                        statuses.insert(
-                            (target.id.clone(), runner_id.clone()),
-                            runner_cmd.run()?.status,
-                        );
-
-                        outputs.insert(target.id.clone() + runner_id, output.clone());
-                    } else {
-                        active_runners.push(ActiveRunner {
-                            handle: runner_cmd.stdout_capture().start()?,
-                            target: target.clone(),
-                            runner_id: runner_id.to_string(),
-                        })
-                    }
-                }
-            }
-
-            while !active_runners.is_empty() {
-                let mut idx_for_removal = Vec::<usize>::new();
-                for (i, runner) in active_runners.iter().enumerate() {
-                    if let Some(status) = runner.handle.try_wait()? {
-                        idx_for_removal.push(i);
-
-                        let output = String::from_utf8(status.stdout.clone())?;
-                        println!("{output}");
-                        let target_id = runner.target.id.clone();
-                        outputs.insert(target_id.clone() + &runner.runner_id, output);
-
-                        statuses.insert((target_id, runner.runner_id.clone()), status.status);
-                    }
-                }
-
-                for i in idx_for_removal.iter().rev() {
-                    active_runners.remove(*i);
-                }
-
-                // Add a small sleep to prevent busy-waiting
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }
-
-            for ((target_id, runner_id), status) in statuses {
-                let target_runner = target_id.clone() + &runner_id;
-
-                let target = targets
-                    .iter()
-                    .find(|t| t.id == target_id)
-                    .expect("the target should exist because the status exists");
-
-                let mut fails: Vec<String> = Vec::new();
-
-                if !run.no_parse {
-                    for (suite_id, suite_config) in &config_meta.config.suites {
-                        let suite = Suite::from_config(&config_meta.config, suite_config, suite_id);
-                        let suite_file_name = renderer.render_suite_file_name(target, &suite)?;
-                        for group in &suite.groups {
-                            for test in &group.tests {
-                                if test.exclude_targets.contains(&target_id) {
-                                    continue;
-                                }
-
-                                let fail_regex = renderer.render_fail_regex(
-                                    &target_runner,
-                                    &suite_file_name,
-                                    &suite,
-                                    group,
-                                    test,
-                                )?;
-
-                                let fail_regex = Regex::new(&fail_regex).unwrap();
-
-                                if fail_regex.is_match(&outputs[&target_runner]) {
-                                    fails.push(
-                                        format!(
-                                            "  {} ({}) > {} > {} > {}: FAILED",
-                                            target_id, runner_id, suite.name, group.name, test.name
-                                        )
-                                        .to_string(),
-                                    );
-                                } else {
-                                    let pass_regex = renderer.render_pass_regex(
-                                        &target_runner,
-                                        &suite_file_name,
-                                        &suite,
-                                        group,
-                                        test,
-                                    )?;
-
-                                    let pass_regex = Regex::new(&pass_regex).unwrap();
-
-                                    if !pass_regex.is_match(&outputs[&target_runner]) {
-                                        fails.push(
-                                            format!(
-                                                "  {} ({}) > {} > {} > {}: UNKNOWN: could not find either regex:\n    FAIL REGEX: {}\n    PASS REGEX: {}",
-                                                target_id,
-                                                runner_id,
-                                                suite.name,
-                                                group.name,
-                                                test.name,
-                                                fail_regex.as_str(),
-                                                pass_regex.as_str()
-                                            )
-                                            .to_string(),
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                // If the command was exit 0 AND there were no FAILED or UNKNOWN test results
-                if status.success() && fails.is_empty() {
-                    println!("{} ({}): ran succesfully!", target_id, runner_id);
-                } else {
-                    eprintln!(
-                        "{} ({}): failed to run succesfully ({})",
-                        target_id, runner_id, status
-                    );
-                    for failure in &fails {
-                        eprintln!("{failure}")
-                    }
-                }
             }
         }
     }

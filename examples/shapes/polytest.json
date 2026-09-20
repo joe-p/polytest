@@ -2,7 +2,7 @@
   // Test comment
   "name": "Shapes Test Plan",
   "package_name": "shapes",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "resource_dir": "./resources",
   "suite": {
     "circle": {
@@ -89,12 +89,7 @@
     },
     "swift": {
       "out_dir": "./implementations/swift/Tests/ShapesTests",
-      "resource_dir": "./implementations/swift/Tests/ShapesTests/Resources",
-      "runner": {
-        "Catalyst": {
-          "command": "xcodebuild -scheme {{ package_name | convert_case('Pascal') }} test -destination 'platform=macOS,variant=Mac Catalyst'"
-        }
-      }
+      "resource_dir": "./implementations/swift/Tests/ShapesTests/Resources"
     }
   },
   "custom_target": {
@@ -102,14 +97,7 @@
       "out_dir": "./implementations/ruby/test",
       "suite_file_name_template": "test_{{ suite.name | convert_case('Snake') }}.rb",
       "test_regex_template": "def test_{{ name | convert_case('Snake') }}",
-      "template_dir": "./templates/minitest_unit",
-      "runner": {
-        "rake test": {
-          "command": "bundle exec rake test A='--verbose'",
-          "fail_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)",
-          "pass_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
-        }
-      }
+      "template_dir": "./templates/minitest_unit"
     }
   },
   "document": {
