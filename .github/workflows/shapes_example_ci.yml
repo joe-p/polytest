@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     runs-on: macos-latest # Using macOS since it supports all implementations
-    
+
     steps:
     - uses: actions/checkout@v4
 
@@ -72,7 +72,27 @@ jobs:
         cd examples/shapes
         cargo run -- validate
 
-    - name: Run tests
+    - name: Run Python tests
       run: |
-        cd examples/shapes
-        cargo run -- run
+        cd examples/shapes/implementations/python
+        pytest
+
+    - name: Run Ruby tests
+      run: |
+        cd examples/shapes/implementations/ruby
+        bundle exec rake test
+
+    - name: Run Bun tests
+      run: |
+        cd examples/shapes/implementations/bun
+        bun test
+
+    - name: Run vitest tests
+      run: |
+        cd examples/shapes/implementations/vitest
+        pnpm vitest run
+
+    - name: Run Swift tests
+      run: |
+        cd examples/shapes/implementations/swift
+        swift test

@@ -1,13 +1,9 @@
 use color_eyre::eyre::{eyre, Context, Report, Result};
 use glob::glob;
-use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::path::{Path, PathBuf};
 
-use crate::runner::DefaultRunner;
-use crate::runner::Runner;
-use crate::runner::RunnerConfig;
 use crate::TemplateType;
 
 pub enum DefaultTarget {
@@ -52,36 +48,17 @@ impl Display for DefaultTarget {
 }
 
 impl DefaultTarget {
-    fn default_runners(&self) -> Vec<DefaultRunner> {
-        match self {
-            DefaultTarget::Pytest => vec![DefaultRunner::Pytest],
-            DefaultTarget::Bun => vec![DefaultRunner::BunTest],
-            DefaultTarget::Vitest => vec![DefaultRunner::Vitest],
-            DefaultTarget::Swift => vec![DefaultRunner::XcodebuildMacOS],
-        }
-    }
-
     pub fn build_target(
         &self,
         id: &str,
         config: &TargetConfig,
         config_root: &Path,
     ) -> Result<Target> {
-        let runner_overrides = config.runners.clone().unwrap_or_default();
-
         let js_test_regex = r#"(?m)test(\.skip)?\(["']{{ name }}["'],"#.to_string();
 
         match self {
             DefaultTarget::Pytest => {
                 let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
 
                 Ok(Target {
                     id: id.to_string(),
@@ -94,19 +71,10 @@ impl DefaultTarget {
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
-                    runners,
                 })
             }
             DefaultTarget::Bun => {
                 let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
 
                 Ok(Target {
                     id: id.to_string(),
@@ -118,19 +86,10 @@ impl DefaultTarget {
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
-                    runners,
                 })
             }
             DefaultTarget::Vitest => {
                 let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
 
                 Ok(Target {
                     id: id.to_string(),
@@ -142,19 +101,10 @@ impl DefaultTarget {
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
-                    runners,
                 })
             }
             DefaultTarget::Swift => {
                 let target_out_dir = config_root.join(&config.out_dir);
-                let default_runner_cfgs: IndexMap<String, RunnerConfig> = self
-                    .default_runners()
-                    .into_iter()
-                    .map(|default_runner| default_runner.get_default_config(config).into_pair())
-                    .collect();
-
-                let runners =
-                    Runner::from_configs(default_runner_cfgs, &runner_overrides, &target_out_dir)?;
 
                 Ok(Target {
                     id: id.to_string(),
@@ -166,7 +116,6 @@ impl DefaultTarget {
                     suite_template: self.get_template_content(TemplateType::Suite),
                     group_template: self.get_template_content(TemplateType::Group),
                     test_template: self.get_template_content(TemplateType::Test),
-                    runners,
                 })
             }
         }
@@ -209,7 +158,6 @@ pub struct Target {
     pub suite_template: String,
     pub group_template: String,
     pub test_template: String,
-    pub runners: IndexMap<String, Runner>,
 }
 
 impl Target {
@@ -249,11 +197,6 @@ impl Target {
             suite_template,
             group_template,
             test_template,
-            runners: Runner::from_configs(
-                IndexMap::<String, RunnerConfig>::default(),
-                &config.runners,
-                &config_root.join(&config.out_dir),
-            )?,
         })
     }
 }
@@ -264,9 +207,6 @@ pub struct TargetConfig {
 
     #[serde(default)]
     pub resource_dir: Option<PathBuf>,
-
-    #[serde(rename = "runner")]
-    pub runners: Option<IndexMap<String, RunnerConfig>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -279,9 +219,6 @@ pub struct CustomTargetConfig {
     test_regex_template: String,
     suite_file_name_template: String,
     template_dir: PathBuf,
-
-    #[serde(rename = "runner")]
-    runners: IndexMap<String, RunnerConfig>,
 }
 
 impl From<Target> for CustomTargetConfig {
@@ -292,22 +229,6 @@ impl From<Target> for CustomTargetConfig {
             test_regex_template: target.test_regex_template,
             suite_file_name_template: target.suite_file_name_template,
             template_dir: PathBuf::from(""),
-            runners: target
-                .runners
-                .into_iter()
-                .map(|(id, runner)| {
-                    (
-                        id,
-                        RunnerConfig {
-                            command: Some(runner.command),
-                            fail_regex_template: Some(runner.fail_regex_template),
-                            pass_regex_template: Some(runner.pass_regex_template),
-                            env: runner.env,
-                            work_dir: Some(runner.work_dir),
-                        },
-                    )
-                })
-                .collect(),
         }
     }
 }
