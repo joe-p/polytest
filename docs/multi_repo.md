@@ -20,7 +20,7 @@ For example, in TypeScript, you might add a script to your `package.json` like t
 
 ```json
 "scripts": {
-  "polytest": "polytest generate --git https://github.com/my-org/my-lib-polytest.git#main"
+  "polytest": "polytest --git https://github.com/my-org/my-lib-polytest.git#main generate"
 ```
 
 The `#main` at the end of the URL specifies the branch to use. You can change this to point to any branch, tag, or commit hash.
@@ -74,7 +74,7 @@ This, however, may not be viable when there are major breaking changes to the Po
 
 ```json
 "scripts": {
-  "polytest": "polytest generate --git https://github.com/my-org/my-lib-polytest.git#feat!/some_big_breaking_change"
+  "polytest": "polytest --git https://github.com/my-org/my-lib-polytest.git#feat!/some_big_breaking_change generate"
 ```
 
 Production releases, however, should always point to `main` to ensure stability and feature parity. This can be enforced in CI/CD pipelines by hard-coding the Polytest command in the pipeline configuration:
@@ -82,7 +82,7 @@ Production releases, however, should always point to `main` to ensure stability 
 ```yaml
 steps:
   - name: Generate Polytest tests
-    run: polytest generate --git https://github.com/my-org/my-lib-polytest.git#main
+    run: polytest --git https://github.com/my-org/my-lib-polytest.git#main generate
   - name: Validate Polytest tests
-    run: polytest validate --git https://github.com/my-org/my-lib-polytest.git#main
+    run: polytest --git https://github.com/my-org/my-lib-polytest.git#main validate
 ```
