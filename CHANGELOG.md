@@ -1,3 +1,10 @@
+# 0.9.0
+
+## Breaking Changes
+
+- Removed the `run` command. Polytest now only handles test generation and validation.
+- Removed the `runner` config field from targets and custom targets, along with the related `command`, `work_dir`, `fail_regex_template`, and `pass_regex_template` fields.
+
 # 0.8.1
 
 ## Fixes

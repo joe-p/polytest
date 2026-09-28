@@ -3,7 +3,8 @@ use regex::Regex;
 
 use crate::parsing::{find_test, get_suite_chunk};
 use crate::render::Renderer;
-use crate::{target::Target, ConfigMeta, Suite};
+use crate::suite::Suite;
+use crate::{target::Target, ConfigMeta};
 
 pub fn validate_target(
     config_meta: &ConfigMeta,

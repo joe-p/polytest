@@ -139,7 +139,7 @@ These are the targets supported by Polytest out of the box. Custom targets can a
 
 #### out_dir
 
-The `out_dir` field is used to define the output directory for the generated test scaffolding and is used as the working directory when the test command is ran.
+The `out_dir` field is used to define the output directory for the generated test scaffolding.
 
 ### Examples
 
@@ -158,13 +158,13 @@ The `out_dir` field is used to define the output directory for the generated tes
 
 ## custom_target.\<CUSTOM_TARGET_NAME>
 
-Custom test targets can be defined under the `custom_target` object. Custom targets give you full control of scaffolding templates, test execution, and parsing.
+Custom test targets can be defined under the `custom_target` object. Custom targets give you full control of scaffolding templates and parsing.
 
 ### Fields
 
 #### out_dir
 
-The `out_dir` field is used to define the output directory for the generated test scaffolding and is used as the working directory when the test command is ran. The path is relative to the location of the configuration file.
+The `out_dir` field is used to define the output directory for the generated test scaffolding. The path is relative to the location of the configuration file.
 
 #### suite_file_name_template
 
@@ -195,66 +195,6 @@ The `template_dir` field is used to define the directory that contains the templ
 * `test*`
 
 See [templates documentation](./templates.md) for more information on the expected contents of these files and available variables.
-
-## custom_target.\<CUSTOM_TARGET_NAME>.runner.\<RUNNER_NAME>
-
-`runner` is an object that defines how to run the test suites and parse the results. There can be multiple runners defined for one target (for example, testing multiple platforms).
-
-Each runner will inherit the fields of the previously-defined runner if they are not defined.
-
-### Fields
-
-#### command
-
-The `command` field is used to define the command to run the tests.
-
-#### work_dir
-
-The `work_dir` field is used to define the working directory for the runner. If not defined, the `out_dir` of the target will be used.
-
-#### fail_regex_template
-
-The `fail_regex_template` field is used to define regex that Polytest can use on the output to determine if a test has failed. This string is a minijinja template.
-
-##### Template variables
-
-The variables available for use in the template. See [templates documentation](./templates.md) for more information on how these variables can be used.
-
-* `file_name` - The name of the file that contains the test (this is the rendered `suite_file_name_template`)
-* `suite_name` - The name of the suite that contains the test (i.e. for `suite.some_suite`, `some_suite` )
-* `group_name` - The name of the group that contains the test (i.e. for `group.some_group`, `some_group` )
-* `test_name` - The name of the test (i.e. for `test.some_test`, `some_test` )
-
-#### pass_fail_regex_template
-
-The `pass_fail_regex_template` field is used to define regex that Polytest can use on the output to determine if a test has passed. This string is a minijinja template.
-
-##### Template variables
-
-The variables available for use in the template. See [templates documentation](./templates.md) for more information on how these variables can be used.
-
-* `file_name` - The name of the file that contains the test (this is the rendered `suite_file_name_template`)
-* `suite_name` - The name of the suite that contains the test (i.e. for `suite.some_suite`, `some_suite` )
-* `group_name` - The name of the group that contains the test (i.e. for `group.some_group`, `some_group` )
-* `test_name` - The name of the test (i.e. for `test.some_test`, `some_test` )
-
-### Example
-
-```json
-{
-  "custom_target": {
-    "minitest_unit": {
-      "runner": {
-        "rake test": {
-          "command": "bundle exec rake test A='--verbose'",
-          "fail_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = (F|E)",
-          "pass_regex_template": "Test{{ suite_name | convert_case('Pascal') }}#test_{{ test_name }} = \\d+\\.\\d+ s = \\."
-        }
-      }
-    }
-  }
-}
-```
 
 ## document.\<DOCUMENT_NAME>
 

@@ -3,7 +3,6 @@ use convert_case::{Boundary, Case, Converter};
 use std::path::Path;
 
 use crate::parsing::{find_suite, find_test, get_group_comment, get_groups, get_suite_chunk};
-use crate::runner::Runner;
 use crate::target::Target;
 use crate::ConfigMeta;
 use crate::{document::Document, group::Group, suite::Suite, test::Test};
@@ -128,28 +127,6 @@ impl Renderer {
         }
 
         for target in targets {
-            for (runner_id, runner) in &target.runners {
-                let target_runner = target.id.clone() + runner_id;
-
-                env.add_template_owned(
-                    format!("{}_fail_regex", target_runner),
-                    runner.fail_regex_template.clone(),
-                )
-                .context(format!(
-                    "failed to add fail_regex template for runner {} of target {}",
-                    runner_id, target.id
-                ))?;
-
-                env.add_template_owned(
-                    format!("{}_pass_regex", target_runner),
-                    runner.pass_regex_template.clone(),
-                )
-                .context(format!(
-                    "failed to add pass_regex template for runner {} of target {}",
-                    runner_id, target.id
-                ))?;
-            }
-
             env.add_template_owned(
                 format!("{}_suite_file_name", target.id),
                 target.suite_file_name_template.clone(),
@@ -483,59 +460,6 @@ impl Renderer {
             ))?;
 
         Ok(rendered)
-    }
-
-    pub fn render_cmd(&self, runner: &Runner) -> Result<String> {
-        Ok(self.env.render_str(
-            &runner.command,
-            minijinja::context! {
-                package_name => minijinja::Value::from(&self.config_meta.config.package_name),
-            },
-        )?)
-    }
-
-    pub fn render_pass_regex(
-        &self,
-        target_runner: &str,
-        suite_file_name: &str,
-        suite: &Suite,
-        group: &Group,
-        test: &Test,
-    ) -> Result<String> {
-        let template = self
-            .env
-            .get_template(format!("{}_pass_regex", target_runner).as_str())?;
-
-        template
-            .render(minijinja::context! {
-                file_name => minijinja::Value::from(suite_file_name),
-                suite_name => minijinja::Value::from(&suite.name),
-                group_name => minijinja::Value::from(&group.name),
-                test_name => minijinja::Value::from(&test.name),
-            })
-            .context(format!("failed to render pass regex for {}", target_runner))
-    }
-
-    pub fn render_fail_regex(
-        &self,
-        target_runner: &str,
-        suite_file_name: &str,
-        suite: &Suite,
-        group: &Group,
-        test: &Test,
-    ) -> Result<String> {
-        let template = self
-            .env
-            .get_template(format!("{}_fail_regex", target_runner).as_str())?;
-
-        template
-            .render(minijinja::context! {
-                file_name => minijinja::Value::from(suite_file_name),
-                suite_name => minijinja::Value::from(&suite.name),
-                group_name => minijinja::Value::from(&group.name),
-                test_name => minijinja::Value::from(&test.name),
-            })
-            .context(format!("failed to render fail regex for {}", target_runner))
     }
 }
 
