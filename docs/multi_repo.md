@@ -1,6 +1,6 @@
 # Multiple Repos
 
-Below is the recommended workflow when an engineering team is working with multiple repositories that all share the same Polytest configuration. This flow is recommended because it avoids the manual overhead of copying configuration changes to multiple repositories or having to work with git submodules.
+Below is the recommended workflow when an engineering team is working with multiple repositories that all share the same Polytest configuration. This flow uses a git submodule so each implementation repo shares a single source of configuration without copying changes between repositories, while still pinning the exact configuration version it is tested against.
 
 For this document, we will be assuming we are writing a library called `my-lib` that is implemented in two languages: Python and TypeScript. Each implementation is in its own repo: `my-org/my-lib-py` and `my-org/my-lib-ts`. The polytest configuration will live in a third repository called `my-org/my-lib-polytest`.
 
@@ -12,55 +12,51 @@ In this repo, define the Polytest configuration file(s). All the paths within th
 
 For example, if the tests in `my-lib-py` live in `tests/polytest_tests`, then the paths in the configuration should be written as `../tests/polytes_tests`.
 
-### Step 2. Add Polytest with Git Flag
+### Step 2. Add the Configuration Repo as a Submodule
 
-In each implementation repo, add a script to execute Polytest with the `--git` flag pointing to the Polytest configuration repo.
+In each implementation repo, add the Polytest configuration repo as a git submodule in the root of the implementation repo so the relative paths in the configuration file resolve correctly:
 
-For example, in TypeScript, you might add a script to your `package.json` like this:
+```bash
+git submodule add -b main https://github.com/my-org/my-lib-polytest.git my-lib-polytest
+```
+
+The `-b main` records `main` as the branch to follow in `.gitmodules`, which lets `git submodule update --remote` pull the latest configuration.
+
+Anyone cloning the implementation repo should clone with submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/my-org/my-lib-ts.git
+# or, in an existing clone
+git submodule update --init
+```
+
+### Step 3. Point Polytest at the Submodule
+
+Run Polytest with `--config` pointing at the configuration file inside the submodule. For example, in TypeScript, you might add scripts to your `package.json` like this:
 
 ```json
 "scripts": {
-  "polytest": "polytest --git https://github.com/my-org/my-lib-polytest.git#main generate"
-```
-
-The `#main` at the end of the URL specifies the branch to use. You can change this to point to any branch, tag, or commit hash.
-
-## Workflow: Generating and Validating Tests
-
-When developing, you might not want to push changes to the Polytest configuration repo every time you want to change tests. In this case, you can clone the directory locally and run polytest from there. It is important to ensure the path you clone into is in the root of the implementation repo so that the relative paths in the configuration file work correctly. This path should also be ignored by git.
-
-For example:
-
-**.gitignore**:
-
-```
-/my-lib-polytest
-```
-
-**clone command**:
-
-```bash
-git clone https://github.com/my-org/my-lib-polytest.git
-```
-
-**polytest commands**:
-
-```bash
-polytest --config ./my-lib-polytest/my_suite.json generate -t vitest
-polytest --config ./my-lib-polytest/my_suite.json validate -t vitest
-```
-
-**package.json**:
-
-```json
-"scripts": {
-  "polytest:dev": "polytest --config ./my-lib-polytest/my_suite.json generate -t vitest && polytest --config ./my-lib-polytest/my_suite.json validate -t vitest"
+  "polytest:generate": "polytest --config ./my-lib-polytest/my_suite.json generate -t vitest",
+  "polytest:validate": "polytest --config ./my-lib-polytest/my_suite.json validate -t vitest"
 }
 ```
 
+## Workflow: Updating the Configuration
+
+The submodule pins a specific commit of `my-lib-polytest`, so configuration changes only reach an implementation repo when that repo updates the pin. To pull in the latest configuration from `main`:
+
+```bash
+git submodule update --remote my-lib-polytest
+polytest --config ./my-lib-polytest/my_suite.json generate -t vitest
+git add my-lib-polytest
+git commit -m "chore: update polytest configuration"
+```
+
+When developing, you can edit the configuration inside the submodule directly, commit there, and push those commits to `my-lib-polytest` once they're ready. Remember to commit the updated submodule pointer in the implementation repo afterwards.
+
 ## Workflow: PRs and Releases
 
-When merging features in the implementation repos, the Polytest command should ideally always point to `main`. This means before merging the feature into the implementation repo, there should be a corresponding PR into `my-lib-polytest` on `main`. It's unreasonable to expect that all feature branches implement the same changes at the same time, so you can take advantage of the `exclude_targets` field update `main` without breaking implementation repos:
+When merging features in the implementation repos, the submodule should ideally always point to a commit on `main` of `my-lib-polytest`. This means before merging the feature into the implementation repo, there should be a corresponding PR into `my-lib-polytest` on `main`. It's unreasonable to expect that all feature branches implement the same changes at the same time, so you can take advantage of the `exclude_targets` field to update `main` without breaking implementation repos:
 
 ```json
  "test": {
@@ -70,19 +66,27 @@ When merging features in the implementation repos, the Polytest command should i
         },
 ```
 
-This, however, may not be viable when there are major breaking changes to the Polytest configuration repo (i.e completely removing tests) that will not be compatible with every implementation repo at the same time. In this case, feature branches can be used to point to specific branches in the Polytest configuration repo that contain the necessary changes:
+This, however, may not be viable when there are major breaking changes to the Polytest configuration repo (i.e completely removing tests) that will not be compatible with every implementation repo at the same time. In this case, a feature branch in the implementation repo can pin the submodule to a commit on a feature branch of `my-lib-polytest`:
 
-```json
-"scripts": {
-  "polytest": "polytest --git https://github.com/my-org/my-lib-polytest.git#feat!/some_big_breaking_change generate"
+```bash
+git -C my-lib-polytest fetch origin feat!/some_big_breaking_change
+git -C my-lib-polytest checkout FETCH_HEAD
+git add my-lib-polytest
 ```
 
-Production releases, however, should always point to `main` to ensure stability and feature parity. This can be enforced in CI/CD pipelines by hard-coding the Polytest command in the pipeline configuration:
+Production releases, however, should always pin a commit that is on `main` to ensure stability and feature parity. This can be enforced in CI/CD pipelines:
 
 ```yaml
 steps:
+  - uses: actions/checkout@v4
+    with:
+      submodules: true
+  - name: Ensure Polytest configuration is on main
+    run: |
+      git -C my-lib-polytest fetch origin main
+      git -C my-lib-polytest merge-base --is-ancestor HEAD origin/main
   - name: Generate Polytest tests
-    run: polytest --git https://github.com/my-org/my-lib-polytest.git#main generate
+    run: polytest --config ./my-lib-polytest/my_suite.json generate -t vitest
   - name: Validate Polytest tests
-    run: polytest --git https://github.com/my-org/my-lib-polytest.git#main validate
+    run: polytest --config ./my-lib-polytest/my_suite.json validate -t vitest
 ```

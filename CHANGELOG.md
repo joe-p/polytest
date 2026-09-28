@@ -4,6 +4,7 @@
 
 - Removed the `run` command. Polytest now only handles test generation and validation.
 - Removed the `runner` config field from targets and custom targets, along with the related `command`, `work_dir`, `fail_regex_template`, and `pass_regex_template` fields.
+- Removed the `--git` flag. To share a configuration repo across implementations, add it as a git submodule and point `--config` at it (see `docs/multi_repo.md`).
 
 # 0.8.1
 
